@@ -25,7 +25,7 @@ use iota_sdk::{
 use iota_types::{
     base_types::IotaAddress,
     programmable_transaction_builder::ProgrammableTransactionBuilder,
-    transaction::{Argument, Command, ObjectArg, TransactionKind},
+    transaction::{Argument, Command, ObjectArg, ProgrammableTransaction, TransactionKind},
 };
 use reqwest::Client;
 use serde_json::json;
@@ -168,10 +168,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 let mut object_ref = coin.object_ref();
 
                 for i in 0..txs_per_task {
-                    let tx_data = TransactionData::new_transfer_iota(
-                        address, address, None, // Some(1_000_000),
-                        object_ref, GAS_BUDGET, gas_price,
-                    );
+                    // let tx_data = TransactionData::new_transfer_iota(
+                    //     address, address, None, // Some(1_000_000),
+                    //     object_ref, GAS_BUDGET, gas_price,
+                    // );
+                    let tx_data = TransactionData::new(TransactionKind::ProgrammableTransaction(ProgrammableTransaction{inputs:vec![], commands: vec![]}), 
+                    address, object_ref, GAS_BUDGET, gas_price);
 
                     let signature =
                         keystore.sign_secure(&address, &tx_data, Intent::iota_transaction())?;
