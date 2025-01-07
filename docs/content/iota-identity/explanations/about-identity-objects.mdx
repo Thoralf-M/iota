@@ -96,3 +96,15 @@ depends on the controllers' voting powers as well as the `Identity`'s threshold.
 `Proposal`s keep track of the approvals they receive by internally storing the sum of all approving controllers' voting powers 
 in a field called `votes`.
 A `Proposal` can only be executed after `votes` exceeds the `Identity`'s threshold.
+
+# Identities Hierarchies
+Creating hierarchies of identities can be extremely useful for modeling situations like subsidiaries for companies or custodians 
+for humans.
+In order to create such hierarchies, an Identity must be able to control another. Achieving this is as simple as making an 
+Identity a controller of another Identity.
+
+More concretely, assuming we have two Identities: Identity **A**, and Identity **B**; if we want to model the fact that **A** 
+controls **B**, we add **A** to the list of **B**'s controllers by sending to **A**'s address a `ControllerCap` for Identity 
+**B**.
+With this setup in place, controllers of Identity **A** can borrow **A**'s `ControllerCap` to **B** and use it to invoke **A**'s
+capability on **B**.
