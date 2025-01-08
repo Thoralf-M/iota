@@ -65,7 +65,7 @@ A `ControllerCap` is a token that allows anyone who possess it to invoke a contr
 
 Specifically, `ControllerCap`s are _non-store Move_ objects that behaves in a similar way to **soul-bound tokens** - i.e. they are attached to the address that owns them indefinitely and can only be destroyed after the controllers committee allows it.
 
-Given the strict nature of `ControllerCap`, in order to support use-cases where the access to an Identity wants to be traded -
+Given the restrictive nature of `ControllerCap`, in order to support use-cases where the access to an Identity wants to be traded -
 e.g. leasing it for some time, or given to a smart contract - a new kind of `store`-able token is needed.
 `DelegationToken` exists for this exact reason.
 
