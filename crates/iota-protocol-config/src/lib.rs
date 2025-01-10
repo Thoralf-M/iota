@@ -16,13 +16,14 @@ use tracing::{info, warn};
 
 /// The minimum and maximum protocol versions supported by this build.
 const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 2;
+pub const MAX_PROTOCOL_VERSION: u64 = 3;
 
 // Record history of protocol version allocations here:
 //
 // Version 1: Original version.
 // Version 2: Don't redistribute slashed staking rewards, fix computation of
 // SystemEpochInfoEventV1.
+// Version 3: TODO
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
 
@@ -1634,11 +1635,12 @@ impl ProtocolConfig {
             cfg.feature_flags.passkey_auth = true;
         }
 
-        for cur in 2..=version.0 {
+        for cur in MAX_PROTOCOL_VERSION..=version.0 {
             match cur {
                 1 => unreachable!(),
                 // version 2 is a new framework version but with no config changes
                 2 => {}
+                3 => {}
                 // Use this template when making changes:
                 //
                 //     // modify an existing constant.
