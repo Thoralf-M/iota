@@ -48,9 +48,9 @@ for shared control.
 The Identity Object's unique ID is used to derive the actual DID of the DID Document it contains.
 
 :::warning
-Migrated Identities - i.e. Identities that are derived from legacy Stardust Identities through a migration operation - do not
-share this property. In fact, the unique ID of a migrated Identity is not used to derive the Identity's DID but instead it 
-appears in the Identity's DID Document's `alsoKnownAs` property. 
+Migrated Identities - i.e., those derived from legacy Stardust Identities through a migration operation - do not
+share this property. The unique ID of a migrated Identity is not used to derive the Identity's DID; instead, it 
+appears in the Identity's DID Document `alsoKnownAs` property.
 :::
 
 ## Identity's Access Control
@@ -61,40 +61,40 @@ limit the use of an `Identity`'s APIs - especially its mutable ones - to only th
 ### Controllers, `ControllerCap`, and `DelegationToken`
 An Identity controller is an entity that is authorized to make changes to an Identity.
 In order to allow a broader range of 
-actors to act as an `Identity`'s controller - e.g. an `Identity` controlling another `Identity` - a controller is identified 
+actors to act as an `Identity`'s controller - e.g., an `Identity` controlling another `Identity` - a controller is identified 
 through its **controller capability** `ControllerCap`.
 A `ControllerCap` is a token that allows anyone who possess it to invoke a controller-restricted capability on a given Identity.
 
 Specifically, `ControllerCap`s are _non-store Move_ objects that behaves in a similar way to **soul-bound tokens** - i.e. they are attached to the address that owns them indefinitely and can only be destroyed after the controllers committee allows it.
 
 Given the restrictive nature of `ControllerCap`, in order to support use-cases where the access to an Identity wants to be traded -
-e.g. leasing it for some time, or given to a smart contract - a new kind of `store`-able token is needed.
+e.g., leasing it for some time or given to a smart contract - a new kind of `store`-able token is needed.
 `DelegationToken` exists for this exact reason.
 
 `DelegationToken` is a `store` _Move_ object that can only be minted from a `ControllerCap` and that allows whoever presents it
 to act as a **delegate** of the controller who minted it. `DelegationToken`s can be revoked at any moment by the controllers 
 committee. 
-Furthermore, `DelegationToken`s come with a permissions list - that is set by the minting controller upon the token creation - that limits their capabilities.
+Furthermore, `DelegationToken`s come with a permissions list - set by the minting controller upon the token creation - that limits their capabilities.
 
 :::warning
 Not all `ControllerCap`s are allowed to mint `DelegationToken`s. When a new controller is added to the controllers committee it
 is necessary to specify whether the new controller is allowed to delegate its access or not.
 :::
 
-### Voting power and threshold
+### Voting Power and Threshold
 When an `Identity` has more than a single controller, an access control (AC) policy for the `Identity` must be established. Such 
 a policy is represented by an unsigned integer **threshold** that is established upon the `Identity`'s creation.
-Together with the `Identity`'s threshold, each controller is assigned with a **voting power**, i.e. an unsigned integer that 
+Together with the `Identity`'s threshold, each controller is assigned a **voting power**, i.e. an unsigned integer that 
 acts as a sort of _weight_ in the evaluation of an AC control policy.   
 
-Giving different voting power or weights to each controllers enable a wider range of AC policy that can be enforced on an 
+Giving different voting power or weights to each controller enables a wider range of AC policies that can be enforced on an 
 Identity.
 
 ### Proposals
 Whenever a controller wants to make a change to its `Identity`, a **proposal** encapsulating that change is created instead of 
 carrying out the update right away.
-In order to execute the changes contained in a `Proposal` enough controllers need to approve it. The exact number of approvals 
-depends on the controllers' voting powers as well as the `Identity`'s threshold. 
+To execute the changes contained in a `Proposal`, enough controllers need to approve it. The exact number of approvals 
+depends on the controllers' voting powers, as well as the `Identity`'s threshold. 
 `Proposal`s keep track of the approvals they receive by internally storing the sum of all approving controllers' voting powers 
 in a field called `votes`.
 A `Proposal` can only be executed after `votes` exceeds the `Identity`'s threshold.
@@ -102,8 +102,8 @@ A `Proposal` can only be executed after `votes` exceeds the `Identity`'s thresho
 ## Identity Hierarchies
 Creating hierarchies of identities can be extremely useful for modeling situations like subsidiaries for companies or custodians 
 for humans.
-In order to create such hierarchies, an Identity must be able to control another. Achieving this is as simple as making an 
-Identity a controller of another Identity.
+To create such hierarchies, an identity must be able to control another. Achieving this is as simple as assigning an 
+Identity as a controller of another Identity.
 
 More concretely, assuming we have two Identities: Identity **A**, and Identity **B**; if we want to model the fact that **A** 
 controls **B**, we add **A** to the list of **B**'s controllers by sending to **A**'s address a `ControllerCap` for Identity 
