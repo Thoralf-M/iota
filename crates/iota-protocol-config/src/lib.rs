@@ -1635,7 +1635,7 @@ impl ProtocolConfig {
             cfg.feature_flags.passkey_auth = true;
         }
 
-        for cur in MAX_PROTOCOL_VERSION..=version.0 {
+        for cur in 2..=version.0 {
             match cur {
                 1 => unreachable!(),
                 // version 2 is a new framework version but with no config changes
