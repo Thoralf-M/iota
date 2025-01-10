@@ -17,7 +17,7 @@ e.g., revocation lists or proof of inclusions.
 
 In order to store data on an IOTA network, said data must be encapsulated within a _Move_ object with the _store_ ability.
 This operation can become quite tedious as it requires to model an object that holds the data even for data types that does not 
-require to be stored in a human-readable or accessible manner, e.g. raw bytes, strings.
+require to be stored in a human-readable or accessible manner, such as raw bytes or strings.
 
 To solve this issue, we introduce a new configurable object type, `AuthenticatedAsset, ' that can store arbitrary
 data while keeping track of the address that created it and the address that owns it. After data is wrapped in an
