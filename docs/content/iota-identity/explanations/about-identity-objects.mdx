@@ -17,25 +17,26 @@ DID documents allow us to digitally represent an entity’s identity, where "ent
 When a DID document is stored on a blockchain network, its Self-Sovereign Identity (SSI) properties are enriched by the security guarantees of the DLT,
 obtaining an on-chain identity.
 
-## On-chain Identities with multiple controllers
+## On-chain Identities with Multiple Controllers
+
 The [DID method specification](https://www.w3.org/TR/did-core/#did-controller) defines the DID controller as _an entity that
 is authorized to make changes to a DID Document_. 
 We leverage this definition to define an Identity's controller as an entity that is a DID controller to the Identity's
 DID Document.
 
 A DID document may have multiple controllers which can enact control over the document in two ways:
-- [indipendent control](https://www.w3.org/TR/did-core/#independent-control);
-- [group control](https://www.w3.org/TR/did-core/#group-control);
+- [Independent control](https://www.w3.org/TR/did-core/#independent-control);
+- [Group control](https://www.w3.org/TR/did-core/#group-control);
 
-Similarly on-chain Identities can have more than one controller and the two control strategies mentioned above are instantiated
+Similarly, on-chain Identities can have more than one controller, and the two control strategies mentioned above are instantiated
 like so:
-- [**independent control**](https://www.w3.org/TR/did-core/#independent-control): each controller accesses the identity
+- [**Independent control**](https://www.w3.org/TR/did-core/#independent-control): Each controller accesses the identity
   through its own address.  
-- [**group control**](https://www.w3.org/TR/did-core/#group-control): the access to the Identity is multiplexed through an 
-  address that is shared by all controllers (e.g. multisig address).
+- [**Group control**](https://www.w3.org/TR/did-core/#group-control): Access to the Identity is multiplexed through an 
+  address that is shared by all controllers (e.g., multi-sig address).
 
 ## The Identity Object
-With "identity" or "Identity Object" we refer to an on-chain identity instanced on an IOTA network and that complies with the
+With "identity" or "Identity Object" we refer to an on-chain identity instanced on an IOTA network that complies with the
 [IOTA DID method specification](../../references/iota-identity/iota-did-method-spec.mdx).
 
 More specifically, an Identity Object is a **shared** _Move_ object that stores a single DID Document on the network,
