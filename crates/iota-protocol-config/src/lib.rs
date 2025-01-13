@@ -40,10 +40,10 @@ impl ProtocolVersion {
     #[cfg(not(msim))]
     const MAX_ALLOWED: Self = Self::MAX;
 
-    // We create 3 additional "fake" versions in simulator builds so that we can
+    // We create 2 additional "fake" versions in simulator builds so that we can
     // test upgrades.
     #[cfg(msim)]
-    pub const MAX_ALLOWED: Self = Self(MAX_PROTOCOL_VERSION + 3);
+    pub const MAX_ALLOWED: Self = Self(MAX_PROTOCOL_VERSION + 2);
 
     pub fn new(v: u64) -> Self {
         Self(v)
@@ -1640,6 +1640,7 @@ impl ProtocolConfig {
                 1 => unreachable!(),
                 // version 2 is a new framework version but with no config changes
                 2 => {}
+                // version 3 is a new framework version but with no config changes
                 3 => {}
                 // Use this template when making changes:
                 //
