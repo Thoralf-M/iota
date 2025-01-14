@@ -10,7 +10,7 @@ module iota::timelock_tests {
     use iota::clock;
     use iota::iota::IOTA;
     use iota::test_scenario;
-    use iota::test_utils::{Self, assert_eq};
+    use iota::test_utils::assert_eq;
 
     use iota::labeler::LabelerCap;
     use iota::timelock::{Self, TimeLock};
@@ -382,7 +382,7 @@ module iota::timelock_tests {
     }
 
     #[test]
-    fun test_expiration_time_is_passed() {
+    fun test_unlock_expiration_time_is_passed() {
         // Set up a test environment.
         let sender = @0xA;
         let mut scenario = test_scenario::begin(sender);
@@ -393,15 +393,48 @@ module iota::timelock_tests {
         // Minting some IOTA.
         let iota = balance::create_for_testing<IOTA>(10);
 
-        // Lock the IOTA balance with a expiration time which is passed.
+        // Lock the IOTA balance with an expiration time which is passed.
         let timelock = timelock::lock(iota, 10, scenario.ctx());
 
         // Check if the timelock is unlocked.
         assert_eq(timelock.is_locked(scenario.ctx()), false);
         assert_eq(timelock.remaining_time(scenario.ctx()), 0);
 
+        // Unlock the IOTA balance.
+        let balance = timelock::unlock(timelock, scenario.ctx());
+
         // Cleanup.
-        test_utils::destroy(timelock);
+        balance::destroy_for_testing(balance);
+
+        scenario.end();
+    }
+
+    #[test]
+    fun test_unlock_with_clock_expiration_time_is_passed() {
+        // Set up a test environment.
+        let sender = @0xA;
+        let mut scenario = test_scenario::begin(sender);
+
+        // Create a clock object.
+        let mut clock = clock::create_for_testing(scenario.ctx());
+        clock.increment_for_testing(100);
+
+        // Minting some IOTA.
+        let iota = balance::create_for_testing<IOTA>(10);
+
+        // Lock the IOTA balance with an expiration time which is passed.
+        let timelock = timelock::lock(iota, 10, scenario.ctx());
+
+        // Check if the timelock is unlocked.
+        assert_eq(timelock.is_locked_with_clock(&clock), false);
+        assert_eq(timelock.remaining_time_with_clock(&clock), 0);
+
+        // Unlock the IOTA balance.
+        let balance = timelock::unlock_with_clock(timelock, &clock);
+
+        // Cleanup.
+        balance::destroy_for_testing(balance);
+        clock::destroy_for_testing(clock);
 
         scenario.end();
     }
