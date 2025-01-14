@@ -23,7 +23,9 @@ pub const MAX_PROTOCOL_VERSION: u64 = 3;
 // Version 1: Original version.
 // Version 2: Don't redistribute slashed staking rewards, fix computation of
 // SystemEpochInfoEventV1.
-// Version 3: TODO
+// Version 3: Set the `relocate_event_module` to be true so that the module that
+// is associated as the "sending module" for an event is relocated by linkage.
+
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
 
@@ -183,6 +185,10 @@ struct FeatureFlags {
     // This flag is used to provide the correct MoveVM configuration for clients.
     #[serde(skip_serializing_if = "is_true")]
     rethrow_serialization_type_layout_errors: bool,
+
+    // Makes the event's sending module version-aware.
+    #[serde(skip_serializing_if = "is_false")]
+    relocate_event_module: bool,
 }
 
 fn is_true(b: &bool) -> bool {
@@ -1054,6 +1060,10 @@ impl ProtocolConfig {
     pub fn rethrow_serialization_type_layout_errors(&self) -> bool {
         self.feature_flags.rethrow_serialization_type_layout_errors
     }
+
+    pub fn relocate_event_module(&self) -> bool {
+        self.feature_flags.relocate_event_module
+    }
 }
 
 #[cfg(not(msim))]
@@ -1640,8 +1650,10 @@ impl ProtocolConfig {
                 1 => unreachable!(),
                 // version 2 is a new framework version but with no config changes
                 2 => {}
-                // version 3 is a new framework version but with no config changes
-                3 => {}
+                // version 3
+                3 => {
+                    cfg.feature_flags.relocate_event_module = true;
+                }
                 // Use this template when making changes:
                 //
                 //     // modify an existing constant.
