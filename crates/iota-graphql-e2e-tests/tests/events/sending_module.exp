@@ -50,7 +50,7 @@ Response: {
         {
           "sendingModule": {
             "package": {
-              "address": "0xd691d127ded1aae3749b2b8e9685b4d9cb69ff3dca6c428f01dc00cb2a1bc33d"
+              "address": "0xbf4a1cd7a1f49231d9ac48596d16f6de48758108e9f73400c9b7e5af7abff125"
             },
             "name": "M1"
           }
