@@ -275,3 +275,7 @@ rust-sdk:
 iota-wallet:
   label: IOTA Wallet
   description: IOTA Wallet Browser Extension
+
+node-operation:
+  label: Node Operation
+  description: Node Operation
