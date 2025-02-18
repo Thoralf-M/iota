@@ -906,6 +906,11 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     dag_state,
                 )
                 .await;
+                context
+                    .metrics
+                    .node_metrics
+                    .fetch_blocks_scheduler_inflight
+                    .dec();
                 if results.is_empty() {
                     warn!("No results returned while requesting missing blocks");
                     return;
@@ -935,11 +940,6 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     }
                 }
 
-                context
-                    .metrics
-                    .node_metrics
-                    .fetch_blocks_scheduler_inflight
-                    .dec();
                 debug!(
                     "Total blocks requested to fetch: {}, total fetched: {}",
                     total_requested, total_fetched
@@ -981,6 +981,21 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             .into_iter()
             .take(MAX_PEERS * context.parameters.max_blocks_per_fetch)
             .collect::<Vec<_>>();
+        let mut missing_blocks_per_authority = vec![0; context.committee.size()];
+        for block in &missing_blocks {
+            missing_blocks_per_authority[block.author] += 1;
+        }
+        for (missing, (_, authority)) in missing_blocks_per_authority
+            .into_iter()
+            .zip(context.committee.authorities())
+        {
+            context
+                .metrics
+                .node_metrics
+                .synchronizer_missing_blocks_by_authority
+                .with_label_values(&[&authority.hostname])
+                .inc_by(missing as u64);
+        }
 
         #[cfg_attr(test, expect(unused_mut))]
         let mut peers = context
