@@ -55,6 +55,7 @@ export * from './useGetAllStardustSharedObjects';
 export * from './useGetStardustSharedBasicObjects';
 export * from './useGetStardustSharedNftObjects';
 export * from './useMaxTransactionSizeBytes';
+export * from './useAssetGasBudgetEstimation';
 
 export * from './stake';
 export * from './ui';
