@@ -1,9 +1,10 @@
 // Modifications Copyright (c) 2024 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! This example requests coins from the faucet and spams with simple transfers
-//! to the own address.
-//! cargo run -r --example spammer
+//! This example requests coins from the faucet and spams PTBs that contain many
+//! transactions.
+//!
+//! cargo run -r --example spammer2
 
 mod utils;
 use std::{
@@ -23,7 +24,8 @@ use iota_sdk::{
     types::transaction::{Transaction, TransactionData},
 };
 use iota_types::{
-    base_types::IotaAddress,
+    Identifier,
+    base_types::{IotaAddress, ObjectID},
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, Command, ObjectArg, TransactionKind},
 };
@@ -33,12 +35,14 @@ use shared_crypto::intent::Intent;
 use tokio::time::{Instant, sleep};
 use utils::retrieve_wallet;
 
-const API_URL: &str = &"https://api.testnet.iota.cafe";
-const FAUCET_URL: &str = &"https://faucet.testnet.iota.cafe/gas";
+// const API_URL: &str = &"https://api.testnet.iota.cafe";
+// const FAUCET_URL: &str = &"https://faucet.testnet.iota.cafe/gas";
+const API_URL: &str = &"https://api.devnet.iota.cafe";
+const FAUCET_URL: &str = &"https://faucet.devnet.iota.cafe/gas";
 // const API_URL: &str = &"http://127.0.0.1:9000";
 // const FAUCET_URL: &str = &"http://127.0.0.1:9123/gas";
-const TX_AMOUNT: usize = 100_000;
-const MIN_AMOUNT: u64 = 4_000_000_000;
+const TX_AMOUNT: usize = 1_000;
+const MIN_AMOUNT: u64 = 2_000_000_000;
 const GAS_BUDGET: u64 = 2_000_000;
 // Times I got with a remote node, may be different for you:
 // 100_000 txs 100 tasks: 93.104808472s
@@ -52,7 +56,7 @@ const GAS_BUDGET: u64 = 2_000_000;
 // 100_000 txs 300 tasks: 58.517830051s
 // 100_000 txs 400 tasks: 59.072423557s
 // 100_000 txs 500 tasks: 60.934076263s
-const PARALLEL_TASKS: usize = 260;
+const PARALLEL_TASKS: usize = 10;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -168,9 +172,28 @@ async fn main() -> Result<(), anyhow::Error> {
                 let mut object_ref = coin.object_ref();
 
                 for i in 0..txs_per_task {
-                    let tx_data = TransactionData::new_transfer_iota(
-                        address, address, None, // Some(1_000_000),
-                        object_ref, GAS_BUDGET, gas_price,
+                    let mut ptb = ProgrammableTransactionBuilder::new();
+
+                    let pkg_id = "0x1";
+                    let package = ObjectID::from_hex_literal(pkg_id)?;
+                    // for _ in 0..1{
+                    for _ in 0..1023{
+                        ptb.command(Command::move_call(
+                            package,
+                            Identifier::new("address")?,
+                            Identifier::new("length")?,
+                            vec![],
+                            vec![],
+                        ));
+                    }
+                    let builder = ptb.finish();
+                    let gas_budget = 10_000_000;
+                    let tx_data = TransactionData::new_programmable(
+                        address,
+                        vec![object_ref],
+                        builder,
+                        gas_budget,
+                        gas_price,
                     );
 
                     let signature =
@@ -186,13 +209,11 @@ async fn main() -> Result<(), anyhow::Error> {
                         .await
                     {
                         Ok(tx_response) => {
-                            // Only print every 30th task and every 50th tx to not spam the console
-                            if task % 30 == 0 && i % 50 == 0 {
                                 println!(
-                                    "Task {task} tx {i}/{txs_per_task}: {:?}",
+                                    "Task {task} tx {i}/{txs_per_task}: checkpoint: {:?}, digest: {:?}",
+                                    tx_response.checkpoint,
                                     tx_response.digest
                                 );
-                            }
                             object_ref = tx_response
                                 .object_changes
                                 .expect("missing object changes")
