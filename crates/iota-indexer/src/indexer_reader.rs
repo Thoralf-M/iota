@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    fmt::Write,
+    collections::HashSet,
     sync::{Arc, Mutex},
 };
 
@@ -936,8 +936,10 @@ impl IndexerReader {
                 (inner_query, "1 = 1".into())
             }
             Some(TransactionFilter::TransactionKind(kind)) => {
+                // The `SystemTransaction` variant can be used to filter for all types of system
+                // transactions.
                 if kind == IotaTransactionKind::SystemTransaction {
-                    ("tx_kinds".into(), "tx_kind = 0 OR tx_kind > 1".to_string())
+                    ("tx_kinds".into(), "tx_kind != 1".to_string())
                 } else {
                     ("tx_kinds".into(), format!("tx_kind = {}", kind as u8))
                 }
@@ -951,7 +953,7 @@ impl IndexerReader {
 
                 let mut has_system_transaction = false;
                 let mut has_programmable_transaction = false;
-                let mut other_kinds = Vec::new();
+                let mut other_kinds = HashSet::new();
 
                 for kind in kind_vec.iter() {
                     match kind {
@@ -959,32 +961,42 @@ impl IndexerReader {
                         IotaTransactionKind::ProgrammableTransaction => {
                             has_programmable_transaction = true
                         }
-                        _ => other_kinds.push(*kind as u8),
+                        other => {
+                            other_kinds.insert(*other as u8);
+                        }
                     }
                 }
 
                 let query = if has_system_transaction {
-                    if has_programmable_transaction {
-                        // Case: Both `0` (SystemTransaction) and `1` (ProgrammableTransaction) are
-                        // included: Allow everything
-                        "tx_kind >= 0".to_string()
-                    } else {
-                        // Case: Only `0` and system transactions (`>1`): Allow all system
-                        // transactions
+                    // Case: If `SystemTransaction` is present but `ProgrammableTransaction` is not,
+                    // we need to filter out `ProgrammableTransaction`.
+                    if !has_programmable_transaction {
                         "tx_kind != 1".to_string()
+                    } else {
+                        // No filter applied if both exist
+                        String::new()
                     }
                 } else {
-                    // Case: Only `1` (ProgrammableTransaction) and other fine-grained system
-                    // transactions (>1): Normal `IN` filter
-                    let mut query = String::from("tx_kind IN (");
-                    for (i, kind) in other_kinds.iter().enumerate() {
-                        if i > 0 {
-                            query.push_str(", ");
-                        }
-                        write!(&mut query, "{}", kind).unwrap();
+                    // Case: `ProgrammableTransaction` is present
+                    if has_programmable_transaction {
+                        other_kinds.insert(IotaTransactionKind::ProgrammableTransaction as u8);
                     }
-                    query.push(')');
-                    query
+
+                    if other_kinds.is_empty() {
+                        // If there's nothing to filter on, return an empty query
+                        String::new()
+                    } else {
+                        let mut query = String::from("tx_kind IN (");
+                        query.push_str(
+                            &other_kinds
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        );
+                        query.push(')');
+                        query
+                    }
                 };
 
                 ("tx_kinds".into(), query)

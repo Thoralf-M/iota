@@ -829,7 +829,7 @@ fn test_query_transaction_blocks_tx_kind_filter() -> Result<(), anyhow::Error> {
             .await
             .unwrap();
         assert_eq!(1, res.data.len());
-        //
+
         let IotaTransactionBlockData::V1(tx_data_v1) = &res
             .data
             .first()
@@ -851,10 +851,10 @@ fn test_query_transaction_blocks_tx_kind_filter() -> Result<(), anyhow::Error> {
             .query_transaction_blocks(query, None, Some(2), Some(false))
             .await
             .unwrap();
-        //
+
         assert_eq!(1, res.data.len());
         assert!(!res.has_next_page);
-        //
+
         let IotaTransactionBlockData::V1(tx_data_v1) = &res
             .data
             .first()
@@ -876,10 +876,10 @@ fn test_query_transaction_blocks_tx_kind_filter() -> Result<(), anyhow::Error> {
             .query_transaction_blocks(query, None, Some(1), Some(true))
             .await
             .unwrap();
-        //
+
         assert_eq!(1, res.data.len());
         assert!(res.has_next_page);
-        //
+
         let IotaTransactionBlockData::V1(tx_data_v1) = &res
             .data
             .first()
@@ -899,10 +899,10 @@ fn test_query_transaction_blocks_tx_kind_filter() -> Result<(), anyhow::Error> {
             .query_transaction_blocks(query, None, Some(1), Some(true))
             .await
             .unwrap();
-        //
+
         assert_eq!(1, res.data.len());
         assert!(res.has_next_page);
-        //
+
         let IotaTransactionBlockData::V1(tx_data_v1) = &res
             .data
             .first()
