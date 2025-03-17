@@ -974,7 +974,7 @@ impl IndexerReader {
                         "tx_kind != 1".to_string()
                     } else {
                         // No filter applied if both exist
-                        String::new()
+                        "1 = 1".to_string()
                     }
                 } else {
                     // Case: `ProgrammableTransaction` is present
@@ -984,7 +984,7 @@ impl IndexerReader {
 
                     if other_kinds.is_empty() {
                         // If there's nothing to filter on, return an empty query
-                        String::new()
+                        "1 = 1".to_string()
                     } else {
                         let mut query = String::from("tx_kind IN (");
                         query.push_str(

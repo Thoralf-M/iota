@@ -927,10 +927,10 @@ fn test_query_transaction_blocks_tx_kind_filter() -> Result<(), anyhow::Error> {
             .query_transaction_blocks(query, None, Some(2), Some(true))
             .await
             .unwrap();
-        //
+
         assert_eq!(2, res.data.len());
         assert!(res.has_next_page);
-        //
+
         for tb_res in res.data.iter() {
             let IotaTransactionBlockData::V1(tx_data_v1) =
                 &tb_res.transaction.as_ref().unwrap().data;
