@@ -79,6 +79,7 @@ export function ProtectAccountForm({
             acceptedTos: !!hideToS,
             autoLock: parseAutoLock(autoLock.data || null),
         },
+        shouldUnregister: true,
     });
     const {
         watch,
@@ -137,7 +138,7 @@ export function ProtectAccountForm({
                                 </span>
                                 <a
                                     href={ToS_LINK}
-                                    className="text-label-lg text-primary-30"
+                                    className="text-label-lg text-primary-30 dark:text-primary-80"
                                     target="_blank"
                                 >
                                     Terms of Services

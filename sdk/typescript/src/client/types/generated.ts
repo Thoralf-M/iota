@@ -247,6 +247,8 @@ export interface EndOfEpochInfo {
     totalStakeRewardsDistributed: string;
 }
 export interface EpochInfo {
+    /** Committee validators. Each element is an index pointing to `validators`. */
+    committeeMembers?: string[];
     /** The end of epoch information. */
     endOfEpochInfo?: EndOfEpochInfo | null;
     /** Epoch number */
@@ -829,6 +831,11 @@ export interface IotaSystemStateSummaryV2 {
     activeValidators: IotaValidatorSummary[];
     /** Map storing the number of epochs for which each validator has been below the low stake threshold. */
     atRiskValidators: [string, string][];
+    /**
+     * List of committee validators in the current epoch. Each element is an index pointing to
+     * `active_validators`.
+     */
+    committeeMembers: string[];
     /** The current epoch ID, starting from 0. */
     epoch: string;
     /** The duration of an epoch, in milliseconds. */
@@ -897,7 +904,7 @@ export interface IotaSystemStateSummaryV2 {
     storageFundTotalObjectStorageRebates: string;
     /** The current version of the system state data structure type. */
     systemStateVersion: string;
-    /** Total amount of stake from all active validators at the beginning of the epoch. */
+    /** Total amount of stake from all committee validators at the beginning of the epoch. */
     totalStake: string;
     /**
      * ID of the object that stores preactive validators, mapping their addresses to their `Validator`
@@ -963,6 +970,18 @@ export type IotaTransaction =
           MakeMoveVec: [string | null, IotaArgument[]];
       };
 export type IotaTransactionBlockBuilderMode = 'Commit' | 'DevInspect';
+/**
+ * Represents the type of a transaction. All transactions except `ProgrammableTransaction` are
+ * considered system transactions.
+ */
+export type IotaTransactionKind =
+    | 'ProgrammableTransaction'
+    | 'Genesis'
+    | 'ConsensusCommitPrologueV1'
+    | 'AuthenticatorStateUpdateV1'
+    | 'RandomnessStateUpdate'
+    | 'EndOfEpochTransaction'
+    | 'SystemTransaction';
 /**
  * This is the JSON-RPC type for the IOTA validator. It flattens all inner structures to top-level
  * fields so that they are decoupled from the internal definitions.
@@ -1741,10 +1760,10 @@ export type TransactionFilter =
           };
       } /** Query by transaction kind */
     | {
-          TransactionKind: string;
+          TransactionKind: IotaTransactionKind;
       } /** Query transactions of any given kind in the input. */
     | {
-          TransactionKindIn: string[];
+          TransactionKindIn: IotaTransactionKind[];
       };
 export interface TransferObjectParams {
     objectId: string;
