@@ -1,25 +1,28 @@
 ---
-# Key pairs
-network-key-pair:
-  path: /opt/iota/key-pairs/network.key
-
 # Database Configuration
-db-path: /opt/iota/db/authorities_db
-consensus-config:
-  db-path: /opt/iota/db/consensus_db
+# Important: update this value to the location you want IOTA to store its database
+db-path: "/opt/iota/db"
 
 # Genesis Configuration
+# Important: update these to the location where the genesis and migration files are stored
 genesis:
-  genesis-file-location: /opt/iota/config/genesis.blob
-migration-tx-data-path: /opt/iota/config/migration.blob
+  genesis-file-location: "/opt/iota/config/genesis.blob"
+migration-tx-data-path: "/opt/iota/config/migration.blob"
+
+# Pruning Configuration (see https://docs.iota.org/operator/full-node/configs/pruning)
+authority-store-pruning-config:
+  # Use 18446744073709551615 to disable object versions pruning
+  num-epochs-to-retain: 1
+  # Use 18446744073709551615 to disable transaction pruning
+  num-epochs-to-retain-for-checkpoints: 2
 
 # Network Configuration
+# This address is also used for web socket connections
+json-rpc-address: "0.0.0.0:9000"
 p2p-config:
   listen-address: "0.0.0.0:8084"
-  external-address: /dns/$HOSTNAME/udp/8084 # UPDATE THIS
+  external-address: /dns/$HOSTNAME/udp/8084 # Important: update this to your external DNS address
   seed-peers:
-    - address: /dns/validator-hostname/udp/8084 # UPDATE THIS
-      peer-id: <validator-peer-id> # UPDATE THIS: Get this from your validator's network.key
     - address: /dns/access-0.r.mainnet.iota.cafe/udp/8084
       peer-id: 66b55de43e925417761f3c66cd734451b5876e1496b961052095bdd8a7732189
     - address: /dns/access-1.r.mainnet.iota.cafe/udp/8084
@@ -28,23 +31,6 @@ p2p-config:
       peer-id: c9fbf6fb511fc5243989c7a455d36f277844288b1a1d8453331c200b6ac4d99f
     - address: /dns/access-3.r.mainnet.iota.cafe/udp/8084
       peer-id: 2c1e05e9bddaf505b70184baf21a188a7c270b1b58f38d55e3aea42d067c5fb6
-
-# Pruning Configuration
-authority-store-pruning-config:
-  num-epochs-to-retain: 0
-  num-epochs-to-retain-for-checkpoints: 2
-  periodic-compaction-threshold-days: 1
-
-# Resource Optimization
-enable-index-processing: false
-checkpoint-executor-config:
-  local-execution-timeout-sec: 10
-indirect-objects-threshold: 18446744073709551615
-
-# Metrics Configuration
-metrics:
-  push-interval-seconds: 60
-  push-url: https://metrics-proxy.mainnet.iota.cafe:8443/publish/metrics
 
 # State Sync Archive Fallback
 state-archive-read-config:
