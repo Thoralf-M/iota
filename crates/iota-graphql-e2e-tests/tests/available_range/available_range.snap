@@ -1,7 +1,7 @@
 ---
 source: external-crates/move/crates/move-transactional-test-runner/src/framework.rs
 ---
-processed 5 tasks
+processed 17 tasks
 
 task 1, lines 9-31:
 //# run-graphql

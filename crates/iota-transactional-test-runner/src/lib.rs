@@ -6,6 +6,7 @@
 //! IOTA adapter
 
 pub mod args;
+pub mod offchain_state;
 pub mod programmable_transaction_test_parser;
 mod simulator_persisted_store;
 pub mod test_adapter;
@@ -38,7 +39,9 @@ use iota_types::{
         InputObjects, Transaction, TransactionData, TransactionDataAPI, TransactionKind,
     },
 };
-pub use move_transactional_test_runner::framework::run_test_impl;
+pub use move_transactional_test_runner::framework::{
+    create_adapter, run_tasks_with_adapter, run_test_impl,
+};
 use rand::rngs::StdRng;
 use simulacrum::{Simulacrum, SimulatorStore};
 use simulator_persisted_store::PersistedStore;

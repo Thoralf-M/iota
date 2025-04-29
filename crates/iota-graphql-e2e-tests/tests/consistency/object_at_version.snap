@@ -1,7 +1,7 @@
 ---
 source: external-crates/move/crates/move-transactional-test-runner/src/framework.rs
 ---
-processed 20 tasks
+processed 33 tasks
 
 init:
 A: object(0,0)
