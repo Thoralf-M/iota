@@ -110,6 +110,15 @@ pub enum NameCommand {
         /// The coin to use for payment. If not provided, selects the first coin
         /// with enough balance.
         coin: Option<ObjectID>,
+        /// The address or alias to which the domain will point. If the flag is
+        /// specified without a value, the current active address will be used.
+        #[arg(long, require_equals = true, default_missing_value = "", num_args = 0..=1)]
+        set_target_address: Option<String>,
+        /// Set the reverse lookup for the domain. This will fail if the
+        /// `set-target-address` flag is provided with an address other than the
+        /// sender or if no target address is set.
+        #[arg(long)]
+        set_reverse_lookup: bool,
         #[command(flatten)]
         opts: OptsWithGas,
     },
@@ -360,7 +369,13 @@ impl NameCommand {
                     target_address: entry.name_record.target_address,
                 }
             }
-            Self::Register { domain, coin, opts } => {
+            Self::Register {
+                domain,
+                coin,
+                set_target_address,
+                set_reverse_lookup,
+                opts,
+            } => {
                 anyhow::ensure!(
                     domain.num_labels() == 2,
                     "domain to register must consist of two labels"
@@ -393,8 +408,34 @@ impl NameCommand {
                         iota_names_config.package_address, iota_names_config.object_id
                     ),
                     "--assign nft".to_string(),
-                    "--transfer-objects [nft] sender".to_string(),
                 ];
+                if let Some(identity) = &set_target_address {
+                    let identity = (!identity.is_empty())
+                        .then(|| identity.parse::<KeyIdentity>())
+                        .transpose()?;
+                    let address = get_identity_address(identity, context)?;
+                    if set_reverse_lookup && address != context.active_address()? {
+                        anyhow::bail!(
+                            "cannot set reverse lookup if target address is not the sender"
+                        );
+                    }
+                    args.push(format!(
+                        "--move-call {}::controller::set_target_address @{} nft some(@{address}) @0x6",
+                        iota_names_config.package_address, iota_names_config.object_id,
+                    ));
+                }
+                if set_reverse_lookup {
+                    if set_target_address.is_none() {
+                        anyhow::bail!(
+                            "cannot set reverse lookup without first setting the target address"
+                        );
+                    }
+                    args.push(format!(
+                        "--move-call {}::controller::set_reverse_lookup @{} '{domain}'",
+                        iota_names_config.package_address, iota_names_config.object_id,
+                    ));
+                }
+                args.push("--transfer-objects [nft] sender".to_string());
                 args.extend(opts.into_args());
                 NameCommandResult::Client(
                     IotaClientCommands::PTB(PTB {
