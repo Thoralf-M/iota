@@ -125,7 +125,9 @@ impl Worker for IotaNamesWorker {
 
             if let Some(events) = &transaction.events {
                 for event in events.data.iter() {
-                    self.process_event(IotaNamesEvent::try_from_event(event, &self.config)?)?;
+                    if let Ok(event) = IotaNamesEvent::try_from_event(event, &self.config) {
+                        self.process_event(event)?;
+                    }
                 }
             }
 
