@@ -4,6 +4,7 @@
 use iota_names::{config::IotaNamesConfig, domain::Domain, registry::NameRecord};
 use iota_types::{base_types::IotaAddress, event::Event};
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 pub(crate) enum IotaNamesEvent {
     IotaNamesRegistry(IotaNamesRegistryEvent),
@@ -16,11 +17,13 @@ pub(crate) enum IotaNamesEvent {
 
 impl IotaNamesEvent {
     pub(crate) fn try_from_event(event: &Event, config: &IotaNamesConfig) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            event.package_id == config.package_address.into(),
-            "Invalid event package: {}",
-            event.package_id
-        );
+        // anyhow::ensure!(
+        //     event.package_id == config.package_address.into(),
+        //     "Invalid event package: {}",
+        //     event.package_id
+        // );
+        debug!("Processing event: {event:?}");
+
         Ok(match event.type_.name.as_str() {
             "IotaNamesRegistryEvent" => Self::IotaNamesRegistry(bcs::from_bytes(&event.contents)?),
             "IotaNamesReverseRegistryEvent" => {
@@ -37,7 +40,7 @@ impl IotaNamesEvent {
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct IotaNamesRegistryEvent {
-    domain: Domain,
+    pub domain: String,
     name_record: NameRecord,
 }
 

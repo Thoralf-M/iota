@@ -71,8 +71,11 @@ impl IotaNamesWorker {
 
     fn process_event(&self, event: IotaNamesEvent) -> anyhow::Result<()> {
         match event {
-            IotaNamesEvent::IotaNamesRegistry(_event) => {
+            IotaNamesEvent::IotaNamesRegistry(event) => {
                 self.metrics.total_name_records.add(1);
+                // TODO: get only second level domain name length
+                let name_len = event.domain.len();
+                self.metrics.name_length_histogram.observe(name_len as f64);
             }
             IotaNamesEvent::IotaNamesReverseRegistry(_event) => (),
             IotaNamesEvent::AuctionStarted(_event) => (),
@@ -125,9 +128,14 @@ impl Worker for IotaNamesWorker {
 
             if let Some(events) = &transaction.events {
                 for event in events.data.iter() {
-                    if let Ok(event) = IotaNamesEvent::try_from_event(event, &self.config) {
-                        self.process_event(event)?;
-                    }
+                    match IotaNamesEvent::try_from_event(event, &self.config) {
+                        Ok(event) => {
+                            self.process_event(event)?;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to process event: {e}");
+                        }
+                    };
                 }
             }
 

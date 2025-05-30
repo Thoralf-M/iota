@@ -5,12 +5,16 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use axum::{Extension, Router, routing::get};
 use iota_metrics::{METRICS_ROUTE, RegistryService};
-use prometheus::{IntGauge, Registry, register_int_gauge_with_registry};
+use prometheus::{
+    Histogram, IntGauge, Registry, register_histogram_with_registry,
+    register_int_gauge_with_registry,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub(crate) struct IotaNamesMetrics {
     pub total_name_records: IntGauge,
+    pub name_length_histogram: Histogram,
 }
 
 impl IotaNamesMetrics {
@@ -19,6 +23,13 @@ impl IotaNamesMetrics {
             total_name_records: register_int_gauge_with_registry!(
                 "total_name_records",
                 "The total number of name records in the registry",
+                registry,
+            )
+            .unwrap(),
+            name_length_histogram: register_histogram_with_registry!(
+                "name_length_histogram",
+                "Histogram of registered name lengths",
+                (3..=63).map(|v| v as f64).collect::<Vec<_>>(),
                 registry,
             )
             .unwrap(),
