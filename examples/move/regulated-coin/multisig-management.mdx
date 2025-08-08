@@ -1,0 +1,126 @@
+# Multisig CLI-commands to manage the regulated coin package
+
+This document shows the steps for publishing a package with a multisig address, but the same steps with `--serialize-unsigned-transaction` can be used for any transaction.
+
+## Create the multisig address for the admin
+
+In reality the individual addresses shouldn't be generated on the same machine.
+```shell
+iota client new-address --alias Address0ForMultiSig
+iota client new-address --alias Address1ForMultiSig
+iota client new-address --alias Address2ForMultiSig
+```
+output looks like this:
+```
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Created new keypair and saved it to keystore.                                                                │
+├─────────────────────────┬────────────────────────────────────────────────────────────────────────────────────┤
+│ alias                   │ Address0ForMultiSig                                                                │
+│ address                 │ 0xfdca19a1b5bc68f1bf4a0f0445b9f7244b800f4114935c7ff0f552dc3cf81725                 │
+│ publicBase64Key         │ ZVWc7bfbohTSrI+NVrVkGIxUHqqJBmCsMau387SqLj4=                                       │
+│ publicBase64KeyWithFlag │ AGVVnO2326IU0qyPjVa1ZBiMVB6qiQZgrDGrt/O0qi4+                                       │
+│ keyScheme               │ ed25519                                                                            │
+│ recoveryPhrase          │ lizard process river welcome shallow wall toy throw front citizen glimpse position │
+╰─────────────────────────┴────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Created new keypair and saved it to keystore.                                                     │
+├─────────────────────────┬─────────────────────────────────────────────────────────────────────────┤
+│ alias                   │ Address1ForMultiSig                                                     │
+│ address                 │ 0xcac5a61243e228174aee2b12500d0ec44a443598dae2c360249aa420949581e9      │
+│ publicBase64Key         │ Q6NJ6jGX2liHPdNIFTljO47VVvq6X73Zro4MzqHtOtY=                            │
+│ publicBase64KeyWithFlag │ AEOjSeoxl9pYhz3TSBU5YzuO1Vb6ul+92a6ODM6h7TrW                            │
+│ keyScheme               │ ed25519                                                                 │
+│ recoveryPhrase          │ slide offer lamp ribbon wife slice cluster fade cancel canyon foot wave │
+╰─────────────────────────┴─────────────────────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Created new keypair and saved it to keystore.                                                              │
+├─────────────────────────┬──────────────────────────────────────────────────────────────────────────────────┤
+│ alias                   │ Address2ForMultiSig                                                              │
+│ address                 │ 0x5d723d1becf23d26abf0e2a606af3943781179b643edae91ce952b63787060a0               │
+│ publicBase64Key         │ UnYAsUST7WxiDI1nbeZ1AM4zHs6LH29Hqu+J3lWS1HM=                                     │
+│ publicBase64KeyWithFlag │ AFJ2ALFEk+1sYgyNZ23mdQDOMx7Oix9vR6rvid5VktRz                                     │
+│ keyScheme               │ ed25519                                                                          │
+│ recoveryPhrase          │ mixture opera fabric badge race rescue above brief valley sunset express wedding │
+╰─────────────────────────┴──────────────────────────────────────────────────────────────────────────────────╯
+```
+copy the publicBase64KeyWithFlag values to create the multisig address (for this example 2 out of 3 are required to sign a transaction):
+```shell
+ADDRESS0=AGVVnO2326IU0qyPjVa1ZBiMVB6qiQZgrDGrt/O0qi4+
+ADDRESS1=AEOjSeoxl9pYhz3TSBU5YzuO1Vb6ul+92a6ODM6h7TrW
+ADDRESS2=AFJ2ALFEk+1sYgyNZ23mdQDOMx7Oix9vR6rvid5VktRz
+iota keytool multi-sig-address \
+--pks $ADDRESS0 \
+      $ADDRESS1 \
+      $ADDRESS2 \
+--weights 1 1 1 \
+--threshold 2
+```
+
+```
+╭─────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ multisigAddress │  0xd47716f187407b34869e05ee67b340a6ee73554c64b4ab505250ead779c2ab4d                                    │
+│ multisig        │ ╭────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
+│                 │ │ ╭─────────────────────────┬──────────────────────────────────────────────────────────────────────╮ │ │
+│                 │ │ │ address                 │  0xfdca19a1b5bc68f1bf4a0f0445b9f7244b800f4114935c7ff0f552dc3cf81725  │ │ │
+│                 │ │ │ publicBase64KeyWithFlag │  AGVVnO2326IU0qyPjVa1ZBiMVB6qiQZgrDGrt/O0qi4+                        │ │ │
+│                 │ │ │ weight                  │  1                                                                   │ │ │
+│                 │ │ ╰─────────────────────────┴──────────────────────────────────────────────────────────────────────╯ │ │
+│                 │ │ ╭─────────────────────────┬──────────────────────────────────────────────────────────────────────╮ │ │
+│                 │ │ │ address                 │  0xcac5a61243e228174aee2b12500d0ec44a443598dae2c360249aa420949581e9  │ │ │
+│                 │ │ │ publicBase64KeyWithFlag │  AEOjSeoxl9pYhz3TSBU5YzuO1Vb6ul+92a6ODM6h7TrW                        │ │ │
+│                 │ │ │ weight                  │  1                                                                   │ │ │
+│                 │ │ ╰─────────────────────────┴──────────────────────────────────────────────────────────────────────╯ │ │
+│                 │ │ ╭─────────────────────────┬──────────────────────────────────────────────────────────────────────╮ │ │
+│                 │ │ │ address                 │  0x5d723d1becf23d26abf0e2a606af3943781179b643edae91ce952b63787060a0  │ │ │
+│                 │ │ │ publicBase64KeyWithFlag │  AFJ2ALFEk+1sYgyNZ23mdQDOMx7Oix9vR6rvid5VktRz                        │ │ │
+│                 │ │ │ weight                  │  1                                                                   │ │ │
+│                 │ │ ╰─────────────────────────┴──────────────────────────────────────────────────────────────────────╯ │ │
+│                 │ ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│ threshold       │  2                                                                                                     │
+╰─────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+## Publish the package
+
+Prepare publisher:
+
+```shell
+# make sure to be on the right network
+iota client switch --env devnet
+
+# doesn't work on mainnet, manually send funds from another account to the address
+iota client faucet --address $MULTISIGADDRESS
+# wait for funds to arrive
+sleep 5
+```
+
+```shell
+cd iota/examples/move/regulated-coin/packages
+TX_DATA=$(iota client publish regulated_coin --serialize-unsigned-transaction)
+echo "TX_DATA: $TX_DATA"
+```
+2 signatures are required, for this example we can just generate them on the same machine.
+```shell
+SIG1=$(iota keytool sign --address Address0ForMultiSig --data $TX_DATA --json | jq -r '.iotaSignature')
+echo "SIG1: $SIG1"
+SIG2=$(iota keytool sign --address Address1ForMultiSig --data $TX_DATA --json | jq -r '.iotaSignature')
+echo "SIG2: $SIG2"
+```
+
+Combine the signatures:
+```shell
+COMBINED_SIG=$(iota keytool multi-sig-combine-partial-sig \
+--pks $ADDRESS0 $ADDRESS1 $ADDRESS2 \
+--weights 1 1 1 \
+--threshold 2 \
+--sigs \
+$SIG0 \
+$SIG1 \
+--json | jq -r '.multisigSerialized')
+echo "COMBINED_SIG: $COMBINED_SIG"
+```
+
+Finally execute the transaction:
+```shell
+iota client execute-signed-tx --tx-bytes $TX_DATA --signatures $COMBINED_SIG
+```
