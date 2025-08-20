@@ -16,6 +16,8 @@ use iota::{
 #[error]
 const EMissingDenyCapV1: vector<u8> = b"Dynamic object field for DenyCapV1 not found.";
 #[error]
+const EMissingCoinMetadata: vector<u8> = b"Dynamic object field for CoinMetadata not found.";
+#[error]
 const EMissingTreasuryCap: vector<u8> = b"Dynamic object field for TreasuryCap not found.";
 #[error]
 const EZeroAmount: vector<u8> = b"Amount must be greater than zero.";
@@ -107,7 +109,7 @@ public fun block_address<T>(
     address: address,
     ctx: &mut TxContext,
 ) {
-    coin::deny_list_v1_add(denylist, treasury.deny_cap_mut(), address, ctx);
+    coin::deny_list_v1_add(denylist, treasury.borrow_deny_cap_mut(), address, ctx);
 }
 
 /// Removes an address from the deny list. Similar to `block_address`, the effect for input
@@ -120,15 +122,45 @@ public fun unblock_address<T>(
     address: address,
     ctx: &mut TxContext,
 ) {
-    coin::deny_list_v1_remove(denylist, treasury.deny_cap_mut(), address, ctx);
+    coin::deny_list_v1_remove(denylist, treasury.borrow_deny_cap_mut(), address, ctx);
 }
 
-fun deny_cap_mut<T>(treasury: &mut Treasury<T>): &mut DenyCapV1<T> {
+fun borrow_deny_cap_mut<T>(treasury: &mut Treasury<T>): &mut DenyCapV1<T> {
     assert!(dof::exists_with_type<_, DenyCapV1<T>>(&treasury.id, DenyCapV1Key {}), EMissingDenyCapV1);
     dof::borrow_mut(&mut treasury.id, DenyCapV1Key {})
 }
 
-fun treasury_cap_mut<T>(treasury: &mut Treasury<T>): &mut TreasuryCap<T> {
+/// Get the CoinMetadata.
+public fun get_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap): CoinMetadata<T> {
+    assert!(dof::exists_with_type<_, CoinMetadata<T>>(&treasury.id, CoinMetadataKey {}), EMissingCoinMetadata);
+    dof::remove(&mut treasury.id, CoinMetadataKey {})
+}
+
+/// Set the CoinMetadata.
+public fun set_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap, coin_metadata: CoinMetadata<T>) {
+    dof::add(&mut treasury.id, CoinMetadataKey {}, coin_metadata)
+}
+
+/// Get an immutable reference to the CoinMetadata.
+public fun borrow_metadata_immmut<T>(treasury: &Treasury<T>): &CoinMetadata<T> {
+    assert!(dof::exists_with_type<_, CoinMetadata<T>>(&treasury.id, CoinMetadataKey {}), EMissingCoinMetadata);
+    dof::borrow(&treasury.id, CoinMetadataKey {})
+}
+
+/// Get an immutable reference to the TreasuryCap.
+public fun borrow_treasury_cap_immut<T>(treasury: &Treasury<T>): &TreasuryCap<T> {
+    assert!(dof::exists_with_type<_, TreasuryCap<T>>(&treasury.id, TreasuryCapKey {}), EMissingTreasuryCap);
+    dof::borrow(&treasury.id, TreasuryCapKey {})
+}
+
+/// Get a mutable reference to the TreasuryCap.
+public fun borrow_treasury_cap_mut<T>(treasury: &mut Treasury<T>, _: &AdminCap): &mut TreasuryCap<T> {
+    assert!(dof::exists_with_type<_, TreasuryCap<T>>(&treasury.id, TreasuryCapKey {}), EMissingTreasuryCap);
+    dof::borrow_mut(&mut treasury.id, TreasuryCapKey {})
+}
+
+/// Get a mutable reference to the TreasuryCap. Without the AdminCap only for internal use.
+fun borrow_treasury_cap_mut_internal<T>(treasury: &mut Treasury<T>): &mut TreasuryCap<T> {
     assert!(dof::exists_with_type<_, TreasuryCap<T>>(&treasury.id, TreasuryCapKey {}), EMissingTreasuryCap);
     dof::borrow_mut(&mut treasury.id, TreasuryCapKey {})
 }
@@ -155,7 +187,7 @@ public fun mint<T>(
     
     *mint_allowance = *mint_allowance - amount;
     
-    treasury.treasury_cap_mut().mint_and_transfer(amount, recipient, ctx);
+    treasury.borrow_treasury_cap_mut_internal().mint_and_transfer(amount, recipient, ctx);
 }
 
 /// Burn tokens using a SupplyManagerCap.
@@ -175,7 +207,7 @@ public fun burn<T>(
     let amount = coin.value();
     assert!(amount > 0, EZeroAmount);
 
-    treasury.treasury_cap_mut().burn(coin);
+    treasury.borrow_treasury_cap_mut_internal().burn(coin);
 }
 
 /// Pause all transfers.
@@ -186,7 +218,7 @@ entry fun pause_transfers<T>(
     ctx: &mut TxContext
 ) {
     if (!is_paused<T>(deny_list)) {
-        coin::deny_list_v1_enable_global_pause(deny_list,  treasury.deny_cap_mut(), ctx);
+        coin::deny_list_v1_enable_global_pause(deny_list,  treasury.borrow_deny_cap_mut(), ctx);
     };
 }
 
@@ -198,6 +230,6 @@ entry fun unpause_transfers<T>(
     ctx: &mut TxContext
 ) {
     if (is_paused<T>(deny_list)) {
-        coin::deny_list_v1_disable_global_pause(deny_list, treasury.deny_cap_mut(), ctx);
+        coin::deny_list_v1_disable_global_pause(deny_list, treasury.borrow_deny_cap_mut(), ctx);
     };
 }
