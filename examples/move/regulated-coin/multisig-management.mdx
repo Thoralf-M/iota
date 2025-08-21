@@ -1,6 +1,6 @@
 # Multisig CLI-commands to manage the regulated coin package
 
-This document shows the steps for publishing a package with a multisig address, but the same steps with `--serialize-unsigned-transaction` can be used for any transaction.
+This document shows the steps for publishing a package with a multisig address, but the same steps with `--serialize-unsigned-transaction  --sender $MULTISIGADDRESS` can be used for any transaction.
 
 ## Create the multisig address for the admin
 
@@ -95,8 +95,8 @@ sleep 5
 ```
 
 ```shell
-cd iota/examples/move/regulated-coin/packages
-TX_DATA=$(iota client publish regulated_coin --serialize-unsigned-transaction)
+cd examples/move/regulated-coin/packages
+TX_DATA=$(iota client publish regulated_coin --serialize-unsigned-transaction --sender $MULTISIGADDRESS)
 echo "TX_DATA: $TX_DATA"
 ```
 2 signatures are required, for this example we can just generate them on the same machine.
