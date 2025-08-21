@@ -22,8 +22,6 @@ const EMissingTreasuryCap: vector<u8> = b"Dynamic object field for TreasuryCap n
 #[error]
 const EZeroAmount: vector<u8> = b"Amount must be greater than zero.";
 #[error]
-const EWouldExceedAllowance: vector<u8> = b"Mint amount would exceed allowance.";
-#[error]
 const EPaused: vector<u8> = b"Transfers are paused.";
 #[error]
 const EDeniedAddress: vector<u8> = b"Address is on the deny list.";
@@ -74,18 +72,17 @@ public struct SupplyManagerCap<phantom T> has key, store {
     id: UID,
 }
 
-/// Create a new SupplyManagerCap with a mint allowance.
+/// Create a new SupplyManagerCap.
 public fun new_supply_manager<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
-    mint_allowance: u64,
     ctx: &mut TxContext,
 ): SupplyManagerCap<T> {
 
     let id = object::new(ctx);
     let supply_manager_cap = SupplyManagerCap { id };
 
-    df::add(&mut treasury.id, SupplyManagerKey{ id: object::id(&supply_manager_cap) }, mint_allowance);
+    df::add(&mut treasury.id, SupplyManagerKey{ id: object::id(&supply_manager_cap) }, true);
 
     supply_manager_cap
 }
@@ -96,7 +93,7 @@ public fun unauthorize_supply_manager<T>(
     _: &AdminCap,
     supply_manager_cap_id: ID,
 ) {
-    df::remove_if_exists<SupplyManagerKey, u64>(&mut treasury.id, SupplyManagerKey{ id: supply_manager_cap_id });
+    df::remove<SupplyManagerKey, bool>(&mut treasury.id, SupplyManagerKey{ id: supply_manager_cap_id });
 }
 
 /// Adds the given address to the deny list, preventing it from interacting with the specified
@@ -165,7 +162,7 @@ fun borrow_treasury_cap_mut_internal<T>(treasury: &mut Treasury<T>): &mut Treasu
     dof::borrow_mut(&mut treasury.id, TreasuryCapKey {})
 }
 
-/// Mint tokens using a SupplyManagerCap. Reduces the mint allowance.
+/// Mint tokens using a SupplyManagerCap.
 public fun mint<T>(
     treasury: &mut Treasury<T>,
     supply_manager_cap: &SupplyManagerCap<T>,
@@ -181,11 +178,6 @@ public fun mint<T>(
 
     let supply_manager_key = SupplyManagerKey { id: object::id(supply_manager_cap) };
     assert!(df::exists_(&treasury.id, supply_manager_key), ESupplyManagerNotAuthorized);
-    
-    let mint_allowance = df::borrow_mut<SupplyManagerKey, u64>(&mut treasury.id, supply_manager_key);
-    assert!(*mint_allowance >= amount, EWouldExceedAllowance);
-    
-    *mint_allowance = *mint_allowance - amount;
     
     treasury.borrow_treasury_cap_mut_internal().mint_and_transfer(amount, recipient, ctx);
 }

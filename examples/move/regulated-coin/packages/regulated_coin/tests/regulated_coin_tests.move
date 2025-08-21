@@ -32,11 +32,10 @@ fun test_supply_manager_mint_and_burn() {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
         
-        // Create supply manager with 1000 mint allowance
+        // Create supply manager
         let supply_manager_cap = treasury::new_supply_manager(
             &mut treasury,
             &admin_cap,
-            1000,
             scenario.ctx()
         );
         
@@ -126,64 +125,6 @@ fun test_borrow_treasury_cap_immut_total_supply() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = treasury::EWouldExceedAllowance)]
-fun test_mint_exceeds_allowance() {
-    let admin_address = @0xA;
-    let supply_manager_address = @0xB;
-    let recipient_address = @0xC;
-
-    let mut scenario = test_scenario::begin(@0);
-    deny_list::create_for_test(scenario.ctx());
-
-    scenario.next_tx(admin_address);
-    
-    {
-        regulated_coin::test_init(scenario.ctx());
-    };
-    
-    scenario.next_tx(admin_address);
-    {
-        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let admin_cap = scenario.take_from_sender<AdminCap>();
-        
-        // Create supply manager with only 50 mint allowance
-        let supply_manager_cap = treasury::new_supply_manager(
-            &mut treasury,
-            &admin_cap,
-            50,
-            scenario.ctx()
-        );
-        
-        transfer::public_transfer(supply_manager_cap, supply_manager_address);
-        
-        test_scenario::return_shared(treasury);
-        scenario.return_to_sender(admin_cap);
-    };
-    
-    scenario.next_tx(supply_manager_address);
-    {
-        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
-        let deny_list = scenario.take_shared<DenyList>();
-        
-        // Try to mint 100 tokens (should fail - exceeds allowance of 50)
-        treasury::mint(
-            &mut treasury,
-            &supply_manager_cap,
-            &deny_list,
-            100,
-            recipient_address,
-            scenario.ctx()
-        );
-        
-        test_scenario::return_shared(treasury);
-        scenario.return_to_sender(supply_manager_cap);
-        test_scenario::return_shared(deny_list);
-    };
-    
-    scenario.end();
-}
-
 #[test, expected_failure(abort_code = treasury::EZeroAmount)]
 fun test_mint_zero_amount() {
     let admin_address = @0xA;
@@ -207,7 +148,6 @@ fun test_mint_zero_amount() {
         let supply_manager_cap = treasury::new_supply_manager(
             &mut treasury,
             &admin_cap,
-            1000,
             scenario.ctx()
         );
         
@@ -309,7 +249,7 @@ fun test_blocked_address_cannot_mint() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap,  scenario.ctx());
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
@@ -345,7 +285,7 @@ fun test_blocked_address_cannot_transfer() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap,  scenario.ctx());
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
@@ -454,7 +394,7 @@ fun test_paused_transfers_fail() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
@@ -492,7 +432,7 @@ fun test_unauthorize_supply_manager() {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
         // Create supply manager
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
         supply_manager_id_opt.fill(object::id(&supply_manager_cap));
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
@@ -529,7 +469,7 @@ fun test_unauthorized_supply_manager_mint_fails() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
         supply_manager_id_opt.fill(object::id(&supply_manager_cap));
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
@@ -623,7 +563,7 @@ fun test_burn_zero_amount() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, 100, scenario.ctx());
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap,  scenario.ctx());
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);

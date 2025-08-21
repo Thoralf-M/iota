@@ -28,7 +28,6 @@ fun test_supply_manager_mint_and_burn() {
         let supply_manager_cap = TreasuryMod::new_supply_manager(
             &mut treasury,
             &regulated_admin_cap,
-            1000,
             scenario.ctx()
         );
         add_supply_manager_cap(&mut supply_manager, &admin_cap, supply_manager_cap);
@@ -85,7 +84,6 @@ fun test_supply_manager_remove_cap() {
         let supply_manager_cap = TreasuryMod::new_supply_manager(
             &mut treasury,
             &regulated_admin_cap,
-            1000,
             scenario.ctx()
         );
         add_supply_manager_cap(&mut supply_manager, &admin_cap, supply_manager_cap);

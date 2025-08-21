@@ -103,10 +103,9 @@ DENY_LIST_OBJECT_ID=0x403
 
 Create supply manager:
 ```shell
-# 1) Create a SupplyManagerCap with allowance of 1000 and transfer it to the supply manager address
-MINT_ALLOWANCE=1000
+# 1) Create a SupplyManagerCap and transfer it to the supply manager address
 iota client ptb \
---move-call $TREASURY_PACKAGE_ID::treasury::new_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP $MINT_ALLOWANCE \
+--move-call $TREASURY_PACKAGE_ID::treasury::new_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP \
 --assign sm_cap \
 --transfer-objects "[sm_cap]" @$SUPPLY_MANAGER_ADDRESS
 sleep 2
@@ -150,7 +149,7 @@ iota client ptb \
 --move-call $TREASURY_PACKAGE_ID::treasury::burn "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
 ```
 
-Revoke supply manager (remove allowance, need to create a new SupplyManagerCap afterwards to be able to mint again):
+Revoke supply manager (need to create a new SupplyManagerCap afterwards to be able to mint again):
 ```shell
 iota client ptb \
 --move-call $TREASURY_PACKAGE_ID::treasury::unauthorize_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
