@@ -10,7 +10,7 @@ fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
     let decimals = 9;
     let symbol = b"REGULATED_COIN";
     let name = b"Regulated Coin";
-    let description = b"Regulated Coin with DenyList functionality";
+    let description = b"Example Regulated Coin";
     let icon_url = option::none();
     let allow_global_pause = true;
 

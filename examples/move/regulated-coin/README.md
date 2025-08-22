@@ -101,15 +101,14 @@ RECIPIENT_ADDRESS=$(iota client active-address)
 DENY_LIST_OBJECT_ID=0x403
 ```
 
-Create supply manager:
+Create a SupplyManager:
 ```shell
-# 1) Create a SupplyManagerCap and transfer it to the supply manager address
+# 1) Create a SupplyManagerCap and transfer it to the SupplyManager address
 iota client ptb \
 --move-call $TREASURY_PACKAGE_ID::treasury::new_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP \
 --assign sm_cap \
 --transfer-objects "[sm_cap]" @$SUPPLY_MANAGER_ADDRESS
 sleep 2
-# Save the cap id if needed for later revocation
 SUPPLY_MANAGER_CAP_ID=$(iota client objects --json | jq -r '[.[] | select(.data.type != null and (.data.type | test("SupplyManagerCap"))) | .data.objectId] | first')
 echo "SupplyManagerCap ID: $SUPPLY_MANAGER_CAP_ID"
 ```
@@ -149,10 +148,10 @@ iota client ptb \
 --move-call $TREASURY_PACKAGE_ID::treasury::burn "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
 ```
 
-Revoke supply manager (need to create a new SupplyManagerCap afterwards to be able to mint again):
+Revoke SupplyManager (need to create a new SupplyManagerCap afterwards to be able to mint again):
 ```shell
 iota client ptb \
---move-call $TREASURY_PACKAGE_ID::treasury::unauthorize_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
+--move-call $TREASURY_PACKAGE_ID::treasury::unauthorize_supply_manager "<$TREASURY_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP
 ```
 
 ### SupplyManager Operations

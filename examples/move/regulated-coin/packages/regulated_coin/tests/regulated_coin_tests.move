@@ -32,21 +32,21 @@ fun test_supply_manager_mint_and_burn() {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
         
-        // Create supply manager
+        // Create SupplyManager
         let supply_manager_cap = treasury::new_supply_manager(
             &mut treasury,
             &admin_cap,
             scenario.ctx()
         );
         
-        // Transfer supply manager cap to supply manager
+        // Transfer SupplyManager cap to SupplyManager
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
     };
     
-    // Supply manager mints tokens
+    // SupplyManager mints tokens
     scenario.next_tx(supply_manager_address);
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
@@ -418,7 +418,6 @@ fun test_paused_transfers_fail() {
 fun test_unauthorize_supply_manager() {
     let admin_address = @0xA;
     let supply_manager_address = @0xB;
-    let mut supply_manager_id_opt = option::none<object::ID>();
 
     let mut scenario = test_scenario::begin(@0);
     deny_list::create_for_test(scenario.ctx());
@@ -431,9 +430,8 @@ fun test_unauthorize_supply_manager() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        // Create supply manager
+        // Create a new SupplyManager
         let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
-        supply_manager_id_opt.fill(object::id(&supply_manager_cap));
         transfer::public_transfer(supply_manager_cap, supply_manager_address);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
@@ -442,9 +440,8 @@ fun test_unauthorize_supply_manager() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_id = option::borrow(&supply_manager_id_opt);
-        // Unauthorize supply manager using its object id
-        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap, *supply_manager_id);
+        // Unauthorize the current SupplyManager
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
     };
@@ -479,8 +476,7 @@ fun test_unauthorized_supply_manager_mint_fails() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_id = option::borrow(&supply_manager_id_opt);
-        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap, *supply_manager_id);
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(admin_cap);
     };
@@ -518,7 +514,7 @@ fun test_update_and_verify_description() {
         // Verify the initial description
         let metadata = treasury::borrow_metadata_immmut(&treasury);
         let desc = get_description(metadata);
-        assert!(desc == std::string::utf8(b"Regulated Coin with DenyList functionality"), 42);
+        assert!(desc == std::string::utf8(b"Example Regulated Coin"), 42);
         test_scenario::return_shared(treasury);
     };
 
@@ -593,5 +589,318 @@ fun test_burn_zero_amount() {
         scenario.return_to_sender(supply_manager_cap);
         test_scenario::return_shared(deny_list);
     };
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = treasury::ESupplyManagerEntryAlreadyExists)]
+fun test_create_second_supply_manager_fails() {
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Create first SupplyManager
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(supply_manager_cap, supply_manager_address);
+        
+        // Try to create second SupplyManager (should fail)
+        let supply_manager_cap_2 = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(supply_manager_cap_2, supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    scenario.end();
+}
+
+#[test]
+fun test_unauthorize_and_create_new_supply_manager_works() {
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+    let recipient_address = @0xC;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Create first SupplyManager
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(supply_manager_cap, supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Unauthorize current SupplyManager
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
+        
+        // Create new SupplyManager (should work)
+        let new_supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(new_supply_manager_cap, supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    // Test that new SupplyManager can mint
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let new_supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        // New SupplyManager should be able to mint
+        treasury::mint(&mut treasury, &new_supply_manager_cap, &deny_list, 100, recipient_address, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(new_supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = treasury::ESupplyManagerNotAuthorized)]
+fun test_old_supply_manager_fails_after_unauthorization() {
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+    let recipient_address = @0xC;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Create first SupplyManager
+        let old_supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(old_supply_manager_cap, supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Unauthorize current SupplyManager
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
+        
+        // Create new SupplyManager
+        let new_supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(new_supply_manager_cap, admin_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    // Test that old SupplyManager can no longer mint
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let old_supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        // Old SupplyManager should fail to mint
+        treasury::mint(&mut treasury, &old_supply_manager_cap, &deny_list, 100, recipient_address, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(old_supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = treasury::EMissingSupplyManagerEntry)]
+fun test_unauthorize_nonexistent_supply_manager_fails() {
+    let admin_address = @0xA;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Try to unauthorize SupplyManager when none was created (should fail)
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = treasury::ESupplyManagerNotAuthorized)]
+fun test_burn_with_unauthorized_supply_manager_fails() {
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Create and authorize a SupplyManager to mint some coins first
+        let supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(supply_manager_cap, supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        // Mint some coins
+        treasury::mint(&mut treasury, &supply_manager_cap, &deny_list, 100, supply_manager_address, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Unauthorize the SupplyManager
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    // Try to burn with unauthorized SupplyManager
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let unauthorized_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let coin = scenario.take_from_sender<Coin<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        // Should fail because SupplyManager is no longer authorized
+        treasury::burn(&mut treasury, &unauthorized_cap, &deny_list, coin, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(unauthorized_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = treasury::ESupplyManagerNotAuthorized)]
+fun test_old_supply_manager_burn_fails_with_new_active() {
+    let admin_address = @0xA;
+    let old_supply_manager_address = @0xB;
+    let new_supply_manager_address = @0xC;
+    let recipient_address = @0xD;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+    
+    // Create first SupplyManager and mint some coins
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        let old_supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(old_supply_manager_cap, old_supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    
+    // Old SupplyManager mints coins to recipient
+    scenario.next_tx(old_supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let old_supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        treasury::mint(&mut treasury, &old_supply_manager_cap, &deny_list, 100, recipient_address, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(old_supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    
+    // Admin unauthorizes old SupplyManager and creates new one
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        
+        // Unauthorize the old SupplyManager
+        treasury::unauthorize_supply_manager(&mut treasury, &admin_cap);
+        
+        // Create new SupplyManager (this one is now the active one)
+        let new_supply_manager_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(new_supply_manager_cap, new_supply_manager_address);
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+    
+    // Old SupplyManager tries to burn (should fail even though a new one is authorized)
+    scenario.next_tx(old_supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let old_supply_manager_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let coin = scenario.take_from_address<Coin<REGULATED_COIN>>(recipient_address);
+        let deny_list = scenario.take_shared<DenyList>();
+        
+        treasury::burn(&mut treasury, &old_supply_manager_cap, &deny_list, coin, scenario.ctx());
+        
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(old_supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+    
     scenario.end();
 }

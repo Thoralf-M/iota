@@ -3,10 +3,8 @@ module regulated_coin::treasury;
 use iota::{
     coin::{
         Self, Coin, CoinMetadata, DenyCapV1, TreasuryCap, 
-        // returns if address is on the deny list based on the most recent update
-        deny_list_v1_contains_next_epoch as is_blocklisted,
-        // returns if the global pause is effective based on the most recent update
-        deny_list_v1_is_global_pause_enabled_next_epoch as is_paused,
+        deny_list_v1_contains_next_epoch,
+        deny_list_v1_is_global_pause_enabled_next_epoch,
     },
     deny_list::{DenyList},
     dynamic_field as df,
@@ -27,22 +25,30 @@ const EPaused: vector<u8> = b"Transfers are paused.";
 const EDeniedAddress: vector<u8> = b"Address is on the deny list.";
 #[error]
 const ESupplyManagerNotAuthorized: vector<u8> = b"Supply manager is not authorized.";
+#[error]
+const ESupplyManagerEntryAlreadyExists: vector<u8> = b"There is already an entry for a SupplyManager.";
+#[error]
+const EMissingSupplyManagerEntry: vector<u8> = b"Dynamic field for SupplyManager not found.";
 
 /// Admin capability. The admin has full control over the treasury.
 /// This object must be issued only once during module initialization.
 public struct AdminCap has key, store { id: UID }
 
 /// Shared treasury object for the regulated coin.
-/// Contains 
+/// Can have the following things attached as dynamic fields:
+/// - TreasuryCap
+/// - DenyCapV1
+/// - CoinMetadata
+/// - SupplyManagerKey
 public struct Treasury<phantom T> has key, store {
     id: UID,
 }
 
-/// Keys for the dynamic fields
+// Keys for the dynamic fields
 public struct TreasuryCapKey has copy, store, drop {}
 public struct CoinMetadataKey has copy, store, drop {}
 public struct DenyCapV1Key has copy, store, drop {}
-public struct SupplyManagerKey has copy, store, drop { id: ID } 
+public struct SupplyManagerKey has copy, store, drop { } 
 
 /// Create a Treasury with TreasuryCap and DenyCapV1.
 #[allow(lint(self_transfer))]
@@ -72,28 +78,29 @@ public struct SupplyManagerCap<phantom T> has key, store {
     id: UID,
 }
 
-/// Create a new SupplyManagerCap.
+/// Create a new SupplyManagerCap and authorize it, there can only be one SupplyManagerCap at the time.
 public fun new_supply_manager<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
     ctx: &mut TxContext,
 ): SupplyManagerCap<T> {
+    assert!(!df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerEntryAlreadyExists);
 
     let id = object::new(ctx);
     let supply_manager_cap = SupplyManagerCap { id };
 
-    df::add(&mut treasury.id, SupplyManagerKey{ id: object::id(&supply_manager_cap) }, true);
+    df::add(&mut treasury.id, SupplyManagerKey {}, object::id(&supply_manager_cap) );
 
     supply_manager_cap
 }
 
-/// Unauthorize a supply manager by removing its entry from the Treasury.
+/// Unauthorize the current supply manager by removing its entry from the Treasury.
 public fun unauthorize_supply_manager<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
-    supply_manager_cap_id: ID,
 ) {
-    df::remove<SupplyManagerKey, bool>(&mut treasury.id, SupplyManagerKey{ id: supply_manager_cap_id });
+    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), EMissingSupplyManagerEntry);
+    df::remove<SupplyManagerKey, ID>(&mut treasury.id, SupplyManagerKey {});
 }
 
 /// Adds the given address to the deny list, preventing it from interacting with the specified
@@ -172,12 +179,13 @@ public fun mint<T>(
     ctx: &mut TxContext,
 ) {
     assert!(amount > 0, EZeroAmount);
-    assert!(!is_paused<T>(deny_list), EPaused);
-    assert!(!is_blocklisted<T>(deny_list, ctx.sender()), EDeniedAddress);
-    assert!(!is_blocklisted<T>(deny_list, recipient), EDeniedAddress);
+    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, recipient), EDeniedAddress);
 
-    let supply_manager_key = SupplyManagerKey { id: object::id(supply_manager_cap) };
-    assert!(df::exists_(&treasury.id, supply_manager_key), ESupplyManagerNotAuthorized);
+    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerNotAuthorized);
+    let authorized_id = df::borrow<SupplyManagerKey, ID>(&treasury.id, SupplyManagerKey {});
+    assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
     
     treasury.borrow_treasury_cap_mut_internal().mint_and_transfer(amount, recipient, ctx);
 }
@@ -190,11 +198,12 @@ public fun burn<T>(
     coin: Coin<T>,
     ctx: &mut TxContext,
 ) {
-    assert!(!is_paused<T>(deny_list), EPaused);
-    assert!(!is_blocklisted<T>(deny_list, ctx.sender()), EDeniedAddress);
+    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
 
-    let supply_manager_key = SupplyManagerKey { id: object::id(supply_manager_cap) };
-    assert!(df::exists_(&treasury.id, supply_manager_key), ESupplyManagerNotAuthorized);
+    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerNotAuthorized);
+    let authorized_id = df::borrow<SupplyManagerKey, ID>(&treasury.id, SupplyManagerKey {});
+    assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
 
     let amount = coin.value();
     assert!(amount > 0, EZeroAmount);
@@ -209,7 +218,7 @@ entry fun pause_transfers<T>(
     deny_list: &mut DenyList,
     ctx: &mut TxContext
 ) {
-    if (!is_paused<T>(deny_list)) {
+    if (!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
         coin::deny_list_v1_enable_global_pause(deny_list,  treasury.borrow_deny_cap_mut(), ctx);
     };
 }
@@ -221,7 +230,7 @@ entry fun unpause_transfers<T>(
     deny_list: &mut DenyList,
     ctx: &mut TxContext
 ) {
-    if (is_paused<T>(deny_list)) {
+    if (deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
         coin::deny_list_v1_disable_global_pause(deny_list, treasury.borrow_deny_cap_mut(), ctx);
     };
 }
