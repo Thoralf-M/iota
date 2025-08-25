@@ -9,6 +9,7 @@ use iota::{
     coin::{Coin, update_description, get_description},
     deny_list::{Self, DenyList},
     test_scenario,
+    event,
 };
 
 #[test]
@@ -98,6 +99,223 @@ fun test_supply_manager_mint_and_burn() {
         test_scenario::return_shared(deny_list);
     };
     
+    scenario.end();
+}
+
+#[test]
+fun test_events_emitted() {
+    use regulated_coin::treasury::{MintEvent, BurnEvent, PauseEvent, DenyListChangeEvent};
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+    let recipient_address = @0xC;
+    let deny_address = @0xD;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    // Init
+    scenario.next_tx(admin_address);
+    { 
+        regulated_coin::test_init(scenario.ctx());
+    };
+
+    // Create supply manager
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let sm_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(sm_cap, supply_manager_address);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+
+    // Mint (expect MintEvent)
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let sm_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        treasury::mint(&mut treasury, &sm_cap, &deny_list, 100, recipient_address, scenario.ctx());
+        assert!(event::num_events() == 1, 1000);
+        let mints = event::events_by_type<MintEvent>();
+        assert!(vector::length(&mints) == 1, 1001);
+        assert!(treasury::mint_event_amount(&mints[0]) == 100, 1002);
+        assert!(treasury::mint_event_recipient(&mints[0]) == recipient_address, 1003);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(sm_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Pause (PauseEvent enabled true)
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let mut deny_list = scenario.take_shared<DenyList>();
+        treasury::pause_transfers(&mut treasury, &admin_cap, &mut deny_list, scenario.ctx());
+        let pauses = event::events_by_type<PauseEvent>();
+        assert!(vector::length(&pauses) == 1, 1100);
+        assert!(treasury::pause_event_enabled(&pauses[0]), 1101);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Unpause (PauseEvent enabled false)
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let mut deny_list = scenario.take_shared<DenyList>();
+        treasury::unpause_transfers(&mut treasury, &admin_cap, &mut deny_list, scenario.ctx());
+        let pauses = event::events_by_type<PauseEvent>();
+        assert!(vector::length(&pauses) == 1, 1200);
+        assert!(!treasury::pause_event_enabled(&pauses[0]), 1201);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Block address (DenyListChangeEvent added true)
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let mut deny_list = scenario.take_shared<DenyList>();
+        treasury::block_address(&mut treasury, &admin_cap, &mut deny_list, deny_address, scenario.ctx());
+        let changes = event::events_by_type<DenyListChangeEvent>();
+        assert!(vector::length(&changes) == 1, 1300);
+        assert!(treasury::deny_list_change_event_address(&changes[0]) == deny_address, 1301);
+        assert!(treasury::deny_list_change_event_added(&changes[0]), 1302);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Unblock address (DenyListChangeEvent added false)
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let mut deny_list = scenario.take_shared<DenyList>();
+        treasury::unblock_address(&mut treasury, &admin_cap, &mut deny_list, deny_address, scenario.ctx());
+        let changes = event::events_by_type<DenyListChangeEvent>();
+        assert!(vector::length(&changes) == 1, 1400);
+        assert!(treasury::deny_list_change_event_address(&changes[0]) == deny_address, 1401);
+        assert!(!treasury::deny_list_change_event_added(&changes[0]), 1402);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Burn (BurnEvent)
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let sm_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let coin = scenario.take_from_address<Coin<REGULATED_COIN>>(recipient_address);
+        let deny_list = scenario.take_shared<DenyList>();
+        let amount = coin.value();
+        treasury::burn(&mut treasury, &sm_cap, &deny_list, coin, scenario.ctx());
+        let burns = event::events_by_type<BurnEvent>();
+        assert!(vector::length(&burns) == 1, 1500);
+        assert!(treasury::burn_event_amount(&burns[0]) == amount, 1501);
+        assert!(treasury::burn_event_actor(&burns[0]) == supply_manager_address, 1502);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(sm_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    scenario.end();
+}
+
+#[test]
+fun test_total_supply() {
+    let admin_address = @0x1;
+    let supply_manager_address = @0x2;
+    let recipient_address = @0x3;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    // Init coin
+    scenario.next_tx(admin_address);
+    { regulated_coin::test_init(scenario.ctx()); };
+
+    // Authorize supply manager
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let sm_cap = treasury::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(sm_cap, supply_manager_address);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+
+    // Record supply before
+    let supply_before;
+    scenario.next_tx(admin_address);
+    {
+        let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        supply_before = iota::coin::total_supply(cap_ref);
+        test_scenario::return_shared(treasury);
+    };
+
+    // Mint in supply manager tx
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let sm_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let deny_list = scenario.take_shared<DenyList>();
+        treasury::mint(&mut treasury, &sm_cap, &deny_list, 200, recipient_address, scenario.ctx());
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(sm_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Check supply after mint
+    scenario.next_tx(admin_address);
+    {
+        let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let supply_after = iota::coin::total_supply(cap_ref);
+        // minted 200
+        assert!(supply_after == supply_before + 200, 42);
+        test_scenario::return_shared(treasury);
+    };
+
+    // Burn part of minted coins
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let sm_cap = scenario.take_from_sender<SupplyManagerCap<REGULATED_COIN>>();
+        let coin = scenario.take_from_address<Coin<REGULATED_COIN>>(recipient_address);
+        let deny_list = scenario.take_shared<DenyList>();
+        // Split coin to burn 50, leave remainder with recipient
+        let mut remaining = coin;
+        let burn_part = iota::coin::split(&mut remaining, 50, scenario.ctx());
+        // Return remainder to recipient
+        transfer::public_transfer(remaining, recipient_address);
+        treasury::burn(&mut treasury, &sm_cap, &deny_list, burn_part, scenario.ctx());
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(sm_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
+    // Check supply after mint and burn
+    scenario.next_tx(admin_address);
+    {
+        let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
+        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let supply_after = iota::coin::total_supply(cap_ref);
+        // minted 200, burned 50 => net +150
+        assert!(supply_after == supply_before + 150, 42);
+        test_scenario::return_shared(treasury);
+    };
+
     scenario.end();
 }
 
@@ -448,7 +666,7 @@ fun test_unauthorize_supply_manager() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = treasury::ESupplyManagerNotAuthorized)]
+#[test, expected_failure(abort_code = treasury::ENoSupplyManagerSet)]
 fun test_unauthorized_supply_manager_mint_fails() {
     let admin_address = @0xA;
     let supply_manager_address = @0xB;
@@ -512,7 +730,7 @@ fun test_update_and_verify_description() {
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         // Verify the initial description
-        let metadata = treasury::borrow_metadata_immmut(&treasury);
+        let metadata = treasury::borrow_metadata_immut(&treasury);
         let desc = get_description(metadata);
         assert!(desc == std::string::utf8(b"Example Regulated Coin"), 42);
         test_scenario::return_shared(treasury);
@@ -522,8 +740,8 @@ fun test_update_and_verify_description() {
     {
         let mut treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         let admin_cap = scenario.take_from_sender<AdminCap>();
-        // Update the description using borrow_metadata_mut
-        let mut metadata = treasury::get_metadata(&mut treasury, &admin_cap);
+        // Update the description
+        let mut metadata = treasury::take_metadata(&mut treasury, &admin_cap);
         let treasury_cap = treasury::borrow_treasury_cap_mut(&mut treasury, &admin_cap);
         update_description(treasury_cap, &mut metadata, new_description);
         treasury::set_metadata(&mut treasury, &admin_cap, metadata);
@@ -535,7 +753,7 @@ fun test_update_and_verify_description() {
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         // Verify the description was updated
-        let metadata = treasury::borrow_metadata_immmut(&treasury);
+        let metadata = treasury::borrow_metadata_immut(&treasury);
         let desc = get_description(metadata);
         assert!(desc == new_description, 42);
         test_scenario::return_shared(treasury);
@@ -737,7 +955,7 @@ fun test_old_supply_manager_fails_after_unauthorization() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = treasury::EMissingSupplyManagerEntry)]
+#[test, expected_failure(abort_code = treasury::ENoSupplyManagerSet)]
 fun test_unauthorize_nonexistent_supply_manager_fails() {
     let admin_address = @0xA;
 
@@ -762,7 +980,7 @@ fun test_unauthorize_nonexistent_supply_manager_fails() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = treasury::ESupplyManagerNotAuthorized)]
+#[test, expected_failure(abort_code = treasury::ENoSupplyManagerSet)]
 fun test_burn_with_unauthorized_supply_manager_fails() {
     let admin_address = @0xA;
     let supply_manager_address = @0xB;

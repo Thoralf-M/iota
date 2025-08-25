@@ -9,6 +9,7 @@ use iota::{
     deny_list::{DenyList},
     dynamic_field as df,
     dynamic_object_field as dof,
+    event,
 };
 
 #[error]
@@ -24,11 +25,11 @@ const EPaused: vector<u8> = b"Transfers are paused.";
 #[error]
 const EDeniedAddress: vector<u8> = b"Address is on the deny list.";
 #[error]
+const ENoSupplyManagerSet: vector<u8> = b"No supply manager has been set as dynamic field.";
+#[error]
 const ESupplyManagerNotAuthorized: vector<u8> = b"Supply manager is not authorized.";
 #[error]
 const ESupplyManagerEntryAlreadyExists: vector<u8> = b"There is already an entry for a SupplyManager.";
-#[error]
-const EMissingSupplyManagerEntry: vector<u8> = b"Dynamic field for SupplyManager not found.";
 
 /// Admin capability. The admin has full control over the treasury.
 /// This object must be issued only once during module initialization.
@@ -49,6 +50,12 @@ public struct TreasuryCapKey has copy, store, drop {}
 public struct CoinMetadataKey has copy, store, drop {}
 public struct DenyCapV1Key has copy, store, drop {}
 public struct SupplyManagerKey has copy, store, drop { } 
+
+// Events
+public struct MintEvent has copy, drop, store { amount: u64, recipient: address }
+public struct BurnEvent has copy, drop, store { amount: u64, actor: address }
+public struct PauseEvent has copy, drop, store { enabled: bool }
+public struct DenyListChangeEvent has copy, drop, store { address: address, added: bool }
 
 /// Create a Treasury with TreasuryCap and DenyCapV1.
 #[allow(lint(self_transfer))]
@@ -78,7 +85,7 @@ public struct SupplyManagerCap<phantom T> has key, store {
     id: UID,
 }
 
-/// Create a new SupplyManagerCap and authorize it, there can only be one SupplyManagerCap at the time.
+/// Create a new SupplyManagerCap and authorize it, there can only be one SupplyManagerCap at a time.
 public fun new_supply_manager<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
@@ -99,7 +106,7 @@ public fun unauthorize_supply_manager<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
 ) {
-    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), EMissingSupplyManagerEntry);
+    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ENoSupplyManagerSet);
     df::remove<SupplyManagerKey, ID>(&mut treasury.id, SupplyManagerKey {});
 }
 
@@ -109,11 +116,12 @@ public fun unauthorize_supply_manager<T>(
 public fun block_address<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
-    denylist: &mut DenyList,
+    deny_list: &mut DenyList,
     address: address,
     ctx: &mut TxContext,
 ) {
-    coin::deny_list_v1_add(denylist, treasury.borrow_deny_cap_mut(), address, ctx);
+    coin::deny_list_v1_add(deny_list, treasury.borrow_deny_cap_mut(), address, ctx);
+    event::emit(DenyListChangeEvent { address, added: true });
 }
 
 /// Removes an address from the deny list. Similar to `block_address`, the effect for input
@@ -122,20 +130,82 @@ public fun block_address<T>(
 public fun unblock_address<T>(
     treasury: &mut Treasury<T>,
     _: &AdminCap,
-    denylist: &mut DenyList,
+    deny_list: &mut DenyList,
     address: address,
     ctx: &mut TxContext,
 ) {
-    coin::deny_list_v1_remove(denylist, treasury.borrow_deny_cap_mut(), address, ctx);
+    coin::deny_list_v1_remove(deny_list, treasury.borrow_deny_cap_mut(), address, ctx);
+    event::emit(DenyListChangeEvent { address, added: false });
 }
 
-fun borrow_deny_cap_mut<T>(treasury: &mut Treasury<T>): &mut DenyCapV1<T> {
-    assert!(dof::exists_with_type<_, DenyCapV1<T>>(&treasury.id, DenyCapV1Key {}), EMissingDenyCapV1);
-    dof::borrow_mut(&mut treasury.id, DenyCapV1Key {})
+/// Pause all transfers.
+entry fun pause_transfers<T>(
+    treasury: &mut Treasury<T>,
+    _: &AdminCap,
+    deny_list: &mut DenyList,
+    ctx: &mut TxContext
+) {
+    if (!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
+        coin::deny_list_v1_enable_global_pause(deny_list,  treasury.borrow_deny_cap_mut(), ctx);
+        event::emit(PauseEvent { enabled: true });
+    };
 }
 
-/// Get the CoinMetadata.
-public fun get_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap): CoinMetadata<T> {
+/// Unpause all transfers.
+entry fun unpause_transfers<T>(
+    treasury: &mut Treasury<T>, 
+    _: &AdminCap,
+    deny_list: &mut DenyList,
+    ctx: &mut TxContext
+) {
+    if (deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
+        coin::deny_list_v1_disable_global_pause(deny_list, treasury.borrow_deny_cap_mut(), ctx);
+        event::emit(PauseEvent { enabled: false });
+    };
+}
+
+/// Mint tokens using a SupplyManagerCap.
+public fun mint<T>(
+    treasury: &mut Treasury<T>,
+    supply_manager_cap: &SupplyManagerCap<T>,
+    deny_list: &DenyList,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext,
+) {
+    assert_authorized_supply_manager(treasury, supply_manager_cap);
+
+    assert!(amount > 0, EZeroAmount);
+    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, recipient), EDeniedAddress);
+    
+    treasury.borrow_treasury_cap_mut_internal().mint_and_transfer(amount, recipient, ctx);
+    event::emit(MintEvent { amount, recipient });
+}
+
+/// Burn tokens using a SupplyManagerCap.
+public fun burn<T>(
+    treasury: &mut Treasury<T>,
+    supply_manager_cap: &SupplyManagerCap<T>,
+    deny_list: &DenyList,
+    coin: Coin<T>,
+    ctx: &mut TxContext,
+) {
+    assert_authorized_supply_manager(treasury, supply_manager_cap);
+
+    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
+    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
+
+    let amount = coin.value();
+    assert!(amount > 0, EZeroAmount);
+
+    treasury.borrow_treasury_cap_mut_internal().burn(coin);
+    event::emit(BurnEvent { amount, actor: ctx.sender() });
+}
+
+/// Take the CoinMetadata.
+public fun take_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap): CoinMetadata<T> {
     assert!(dof::exists_with_type<_, CoinMetadata<T>>(&treasury.id, CoinMetadataKey {}), EMissingCoinMetadata);
     dof::remove(&mut treasury.id, CoinMetadataKey {})
 }
@@ -146,7 +216,7 @@ public fun set_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap, coin_metada
 }
 
 /// Get an immutable reference to the CoinMetadata.
-public fun borrow_metadata_immmut<T>(treasury: &Treasury<T>): &CoinMetadata<T> {
+public fun borrow_metadata_immut<T>(treasury: &Treasury<T>): &CoinMetadata<T> {
     assert!(dof::exists_with_type<_, CoinMetadata<T>>(&treasury.id, CoinMetadataKey {}), EMissingCoinMetadata);
     dof::borrow(&treasury.id, CoinMetadataKey {})
 }
@@ -169,68 +239,26 @@ fun borrow_treasury_cap_mut_internal<T>(treasury: &mut Treasury<T>): &mut Treasu
     dof::borrow_mut(&mut treasury.id, TreasuryCapKey {})
 }
 
-/// Mint tokens using a SupplyManagerCap.
-public fun mint<T>(
-    treasury: &mut Treasury<T>,
-    supply_manager_cap: &SupplyManagerCap<T>,
-    deny_list: &DenyList,
-    amount: u64,
-    recipient: address,
-    ctx: &mut TxContext,
-) {
-    assert!(amount > 0, EZeroAmount);
-    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
-    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
-    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, recipient), EDeniedAddress);
+// Internal helper to get a mutable reference to the DenyCapV1 and return `EMissingDenyCapV1` if not found.
+fun borrow_deny_cap_mut<T>(treasury: &mut Treasury<T>): &mut DenyCapV1<T> {
+    assert!(dof::exists_with_type<_, DenyCapV1<T>>(&treasury.id, DenyCapV1Key {}), EMissingDenyCapV1);
+    dof::borrow_mut(&mut treasury.id, DenyCapV1Key {})
+}
 
-    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerNotAuthorized);
+/// Internal helper to assert that the provided supply manager cap matches the authorized
+/// supply manager recorded in the treasury. Aborts with `ENoSupplyManagerSet` or `ESupplyManagerNotAuthorized` if
+/// the dynamic field is missing or the IDs do not match.
+fun assert_authorized_supply_manager<T>(treasury: &Treasury<T>, supply_manager_cap: &SupplyManagerCap<T>) {
+    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ENoSupplyManagerSet);
     let authorized_id = df::borrow<SupplyManagerKey, ID>(&treasury.id, SupplyManagerKey {});
     assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
-    
-    treasury.borrow_treasury_cap_mut_internal().mint_and_transfer(amount, recipient, ctx);
 }
 
-/// Burn tokens using a SupplyManagerCap.
-public fun burn<T>(
-    treasury: &mut Treasury<T>,
-    supply_manager_cap: &SupplyManagerCap<T>,
-    deny_list: &DenyList,
-    coin: Coin<T>,
-    ctx: &mut TxContext,
-) {
-    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list), EPaused);
-    assert!(!deny_list_v1_contains_next_epoch<T>(deny_list, ctx.sender()), EDeniedAddress);
-
-    assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerNotAuthorized);
-    let authorized_id = df::borrow<SupplyManagerKey, ID>(&treasury.id, SupplyManagerKey {});
-    assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
-
-    let amount = coin.value();
-    assert!(amount > 0, EZeroAmount);
-
-    treasury.borrow_treasury_cap_mut_internal().burn(coin);
-}
-
-/// Pause all transfers.
-entry fun pause_transfers<T>(
-    treasury: &mut Treasury<T>,
-    _: &AdminCap,
-    deny_list: &mut DenyList,
-    ctx: &mut TxContext
-) {
-    if (!deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
-        coin::deny_list_v1_enable_global_pause(deny_list,  treasury.borrow_deny_cap_mut(), ctx);
-    };
-}
-
-/// Unpause all transfers.
-entry fun unpause_transfers<T>(
-    treasury: &mut Treasury<T>, 
-    _: &AdminCap,
-    deny_list: &mut DenyList,
-    ctx: &mut TxContext
-) {
-    if (deny_list_v1_is_global_pause_enabled_next_epoch<T>(deny_list)) {
-        coin::deny_list_v1_disable_global_pause(deny_list, treasury.borrow_deny_cap_mut(), ctx);
-    };
-}
+// Event accessors
+public fun mint_event_amount(e: &MintEvent): u64 { e.amount }
+public fun mint_event_recipient(e: &MintEvent): address { e.recipient }
+public fun burn_event_amount(e: &BurnEvent): u64 { e.amount }
+public fun burn_event_actor(e: &BurnEvent): address { e.actor }
+public fun pause_event_enabled(e: &PauseEvent): bool { e.enabled }
+public fun deny_list_change_event_address(e: &DenyListChangeEvent): address { e.address }
+public fun deny_list_change_event_added(e: &DenyListChangeEvent): bool { e.added }

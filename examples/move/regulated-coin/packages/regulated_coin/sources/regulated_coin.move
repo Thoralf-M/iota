@@ -6,7 +6,6 @@ use regulated_coin::treasury;
 public struct REGULATED_COIN has drop {}
 
 fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
-
     let decimals = 9;
     let symbol = b"REGULATED_COIN";
     let name = b"Regulated Coin";
