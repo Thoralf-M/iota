@@ -101,6 +101,16 @@ public fun new_supply_manager<T>(
     supply_manager_cap
 }
 
+/// Authorize a supply manager again.
+public fun authorize_supply_manager<T>(
+    treasury: &mut Treasury<T>,
+    _: &AdminCap,
+    supply_manger_id: ID
+) {
+    assert!(!df::exists_(&treasury.id, SupplyManagerKey {}), ESupplyManagerEntryAlreadyExists);
+    df::add(&mut treasury.id, SupplyManagerKey {}, supply_manger_id );
+}
+
 /// Unauthorize the current supply manager by removing its entry from the Treasury.
 public fun unauthorize_supply_manager<T>(
     treasury: &mut Treasury<T>,
