@@ -24,8 +24,8 @@ if [[ -z "$REG_FILE" || ! -f "$REG_FILE" ]]; then
 fi
 
 # Extract regulated coin values
-REGULATED_COIN_ADMIN_CAP=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::treasury::AdminCap$")) | .objectId' "$REG_FILE" | head -n1)
-REGULATED_COIN_TREASURY=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::treasury::Treasury<")) | .objectId' "$REG_FILE" | head -n1)
+REGULATED_COIN_ADMIN_CAP=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::regulated_coin::AdminCap$")) | .objectId' "$REG_FILE" | head -n1)
+REGULATED_COIN_TREASURY=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::regulated_coin::Treasury$")) | .objectId' "$REG_FILE" | head -n1)
 REGULATED_COIN_PACKAGE_ID=$(jq -r '.objectChanges[] | select(.type=="published" and (.modules | index("regulated_coin"))) | .packageId' "$REG_FILE")
 
 if [[ -z "$REGULATED_COIN_ADMIN_CAP" || "$REGULATED_COIN_ADMIN_CAP" == "null" ]]; then

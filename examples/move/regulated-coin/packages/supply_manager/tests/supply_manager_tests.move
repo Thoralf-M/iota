@@ -2,8 +2,7 @@
 module supply_manager::supply_manager_tests;
 
 use supply_manager::supply_manager::{Self, SupplyManager, SupplyManagerAdminCap, add_supply_manager_cap, remove_supply_manager_cap, mint, burn};
-use regulated_coin::treasury::{Self as TreasuryMod, Treasury, SupplyManagerCap, AdminCap};
-use regulated_coin::regulated_coin;
+use regulated_coin::regulated_coin::{Self, REGULATED_COIN, Treasury, SupplyManagerCap, AdminCap};
 use iota::{coin::Coin, deny_list::{Self, DenyList}, test_scenario};
 
 #[test]
@@ -23,9 +22,9 @@ fun test_supply_manager_mint_and_burn() {
     {
         let mut supply_manager = scenario.take_shared<SupplyManager>();
         let admin_cap = scenario.take_from_sender<SupplyManagerAdminCap>();
-        let mut treasury = scenario.take_shared<Treasury<regulated_coin::REGULATED_COIN>>();
+        let mut treasury = scenario.take_shared<Treasury>();
         let regulated_admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = TreasuryMod::new_supply_manager(
+        let supply_manager_cap = regulated_coin::new_supply_manager(
             &mut treasury,
             &regulated_admin_cap,
             scenario.ctx()
@@ -40,7 +39,7 @@ fun test_supply_manager_mint_and_burn() {
     {
         let mut supply_manager = scenario.take_shared<SupplyManager>();
         let admin_cap = scenario.take_from_sender<SupplyManagerAdminCap>();
-        let mut treasury = scenario.take_shared<Treasury<regulated_coin::REGULATED_COIN>>();
+        let mut treasury = scenario.take_shared<Treasury>();
         let deny_list = scenario.take_shared<DenyList>();
         // Mint tokens
         mint(&mut supply_manager, &admin_cap, &mut treasury, &deny_list, 100, recipient_address, scenario.ctx());
@@ -53,9 +52,9 @@ fun test_supply_manager_mint_and_burn() {
     {
         let mut supply_manager = scenario.take_shared<SupplyManager>();
         let admin_cap = scenario.take_from_sender<SupplyManagerAdminCap>();
-        let mut treasury = scenario.take_shared<Treasury<regulated_coin::REGULATED_COIN>>();
+        let mut treasury = scenario.take_shared<Treasury>();
         let deny_list = scenario.take_shared<DenyList>();
-        let coin = scenario.take_from_address<Coin<regulated_coin::REGULATED_COIN>>(recipient_address);
+        let coin = scenario.take_from_address<Coin<REGULATED_COIN>>(recipient_address);
         // Burn tokens
         burn(&mut supply_manager, &admin_cap, &mut treasury, &deny_list, coin, scenario.ctx());
         test_scenario::return_shared(supply_manager);
@@ -79,15 +78,15 @@ fun test_supply_manager_remove_cap() {
     {
         let mut supply_manager = scenario.take_shared<SupplyManager>();
         let admin_cap = scenario.take_from_sender<SupplyManagerAdminCap>();
-        let mut treasury = scenario.take_shared<Treasury<regulated_coin::REGULATED_COIN>>();
+        let mut treasury = scenario.take_shared<Treasury>();
         let regulated_admin_cap = scenario.take_from_sender<AdminCap>();
-        let supply_manager_cap = TreasuryMod::new_supply_manager(
+        let supply_manager_cap = regulated_coin::new_supply_manager(
             &mut treasury,
             &regulated_admin_cap,
             scenario.ctx()
         );
         add_supply_manager_cap(&mut supply_manager, &admin_cap, supply_manager_cap);
-        let supply_manager_cap: SupplyManagerCap<regulated_coin::REGULATED_COIN> = remove_supply_manager_cap(&mut supply_manager, &admin_cap);
+        let supply_manager_cap: SupplyManagerCap = remove_supply_manager_cap(&mut supply_manager, &admin_cap);
         transfer::public_transfer(supply_manager_cap, admin_address);
 
         test_scenario::return_shared(supply_manager);

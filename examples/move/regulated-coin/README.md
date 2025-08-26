@@ -70,7 +70,7 @@ Create a SupplyManager:
 ```shell
 # 1) Create a SupplyManagerCap and transfer it to the SupplyManager address
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::new_supply_manager "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP \
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::new_supply_manager @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP \
 --assign sm_cap \
 --transfer-objects "[sm_cap]" @$SUPPLY_MANAGER_ADDRESS
 sleep 2
@@ -83,20 +83,20 @@ Block and unblock an address:
 BLOCKED_ADDRESS=0xC0FFEE
 # Block
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::block_address "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID @$BLOCKED_ADDRESS
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::block_address @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID @$BLOCKED_ADDRESS
 # Unblock
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::unblock_address "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID @$BLOCKED_ADDRESS
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::unblock_address @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID @$BLOCKED_ADDRESS
 ```
 
 Global pause and unpause transfers:
 ```shell
 # Pause (effective from next epoch for receiving)
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::pause_transfers "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::pause_transfers @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID
 # Unpause
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::unpause_transfers "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::unpause_transfers @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$DENY_LIST_OBJECT_ID
 ```
 
 Mint and burn via regulated_coin (direct, using SupplyManagerCap):
@@ -104,25 +104,25 @@ Mint and burn via regulated_coin (direct, using SupplyManagerCap):
 # Mint 100 to recipient; sender must be the holder of the SupplyManagerCap
 AMOUNT=100
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::mint "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID $AMOUNT @$RECIPIENT_ADDRESS
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::mint @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID $AMOUNT @$RECIPIENT_ADDRESS
 
 # Burn a coin; sender must own the coin being burned (and present the SupplyManagerCap)
 COIN_TO_BURN=$(iota client objects --json | jq -r '[.[] | select(.data.type != null and (.data.type | test("Coin<.*regulated_coin::REGULATED_COIN"))) | .data.objectId] | first')
 echo "Burning: $COIN_TO_BURN"
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::burn "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::burn @$REGULATED_COIN_TREASURY @$SUPPLY_MANAGER_CAP_ID @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
 ```
 
 Revoke SupplyManager (need to re-authorize or create a new SupplyManagerCap afterwards to be able to mint/burn again):
 ```shell
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::unauthorize_supply_manager "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::unauthorize_supply_manager @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP
 ```
 
 Re-authorize SupplyManager
 ```shell
 iota client ptb \
---move-call $REGULATED_COIN_PACKAGE_ID::treasury::authorize_supply_manager "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
+--move-call $REGULATED_COIN_PACKAGE_ID::regulated_coin::authorize_supply_manager @$REGULATED_COIN_TREASURY @$REGULATED_COIN_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
 ```
 
 ### SupplyManager Operations
@@ -130,21 +130,21 @@ iota client ptb \
 ```shell
 # Attach the SupplyManagerCap to the shared SupplyManager wrapper (admin only)
 iota client ptb \
---move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::add_supply_manager_cap "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
+--move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::add_supply_manager_cap @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$SUPPLY_MANAGER_CAP_ID
 
 # Mint via wrapper (admin only)
 iota client ptb \
---move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::mint "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID 100 @$RECIPIENT_ADDRESS
+--move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::mint @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID 100 @$RECIPIENT_ADDRESS
 
 # Burn via wrapper (admin only; the PTB must include the coin object being burned)
 COIN_TO_BURN=$(iota client objects --json | jq -r '[.[] | select(.data.type != null and (.data.type | test("Coin<.*regulated_coin::REGULATED_COIN"))) | .data.objectId] | first')
 echo "Burning: $COIN_TO_BURN"
 iota client ptb \
---move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::burn "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
+--move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::burn @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID @$COIN_TO_BURN
 
 # Remove the attached SupplyManagerCap from the wrapper and transfer it out (admin only)
 iota client ptb \
---move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::remove_supply_manager_cap "<$REGULATED_COIN_PACKAGE_ID::regulated_coin::REGULATED_COIN>" @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP \
+--move-call $SUPPLY_MANAGER_PACKAGE_ID::supply_manager::remove_supply_manager_cap @$SUPPLY_MANAGER_OBJECT_ID @$SUPPLY_MANAGER_ADMIN_CAP \
 --assign sm_cap \
 --transfer-objects "[sm_cap]" @$SUPPLY_MANAGER_ADDRESS
 ```
