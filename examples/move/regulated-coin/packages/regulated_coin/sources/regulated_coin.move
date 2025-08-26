@@ -81,10 +81,10 @@ fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
         ctx,
     );
 
-    let (adming_cap, treasury)= new(treasury_cap, deny_cap, metadata, ctx);
+    let (admin_cap, treasury)= new(treasury_cap, deny_cap, metadata, ctx);
 
     transfer::public_transfer(
-        adming_cap,
+        admin_cap,
         ctx.sender(),
     );
     transfer::public_share_object(treasury);
