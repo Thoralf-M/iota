@@ -29,7 +29,7 @@ const ENoSupplyManagerSet: vector<u8> = b"No supply manager has been set as dyna
 #[error]
 const ESupplyManagerNotAuthorized: vector<u8> = b"Supply manager is not authorized.";
 #[error]
-const ESupplyManagerEntryAlreadyExists: vector<u8> = b"There is already an entry for a SupplyManager.";
+const ESupplyManagerEntryAlreadyExists: vector<u8> = b"There is already an entry for a supply manager.";
 
 /// Admin capability. The admin has full control over the treasury.
 /// This object must be issued only once during module initialization.
@@ -226,13 +226,13 @@ public fun set_metadata<T>(treasury: &mut Treasury<T>, _: &AdminCap, coin_metada
 }
 
 /// Get an immutable reference to the CoinMetadata.
-public fun borrow_metadata_immut<T>(treasury: &Treasury<T>): &CoinMetadata<T> {
+public fun borrow_metadata<T>(treasury: &Treasury<T>): &CoinMetadata<T> {
     assert!(dof::exists_with_type<_, CoinMetadata<T>>(&treasury.id, CoinMetadataKey {}), EMissingCoinMetadata);
     dof::borrow(&treasury.id, CoinMetadataKey {})
 }
 
 /// Get an immutable reference to the TreasuryCap.
-public fun borrow_treasury_cap_immut<T>(treasury: &Treasury<T>): &TreasuryCap<T> {
+public fun borrow_treasury_cap<T>(treasury: &Treasury<T>): &TreasuryCap<T> {
     assert!(dof::exists_with_type<_, TreasuryCap<T>>(&treasury.id, TreasuryCapKey {}), EMissingTreasuryCap);
     dof::borrow(&treasury.id, TreasuryCapKey {})
 }

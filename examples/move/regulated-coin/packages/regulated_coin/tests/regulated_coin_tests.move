@@ -431,7 +431,7 @@ fun test_total_supply() {
     scenario.next_tx(admin_address);
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let cap_ref = treasury::borrow_treasury_cap(&treasury);
         supply_before = iota::coin::total_supply(cap_ref);
         test_scenario::return_shared(treasury);
     };
@@ -452,7 +452,7 @@ fun test_total_supply() {
     scenario.next_tx(admin_address);
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let cap_ref = treasury::borrow_treasury_cap(&treasury);
         let supply_after = iota::coin::total_supply(cap_ref);
         // minted 200
         assert!(supply_after == supply_before + 200, 42);
@@ -481,7 +481,7 @@ fun test_total_supply() {
     scenario.next_tx(admin_address);
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let cap_ref = treasury::borrow_treasury_cap(&treasury);
         let supply_after = iota::coin::total_supply(cap_ref);
         // minted 200, burned 50 => net +150
         assert!(supply_after == supply_before + 150, 42);
@@ -492,7 +492,7 @@ fun test_total_supply() {
 }
 
 #[test]
-fun test_borrow_treasury_cap_immut_total_supply() {
+fun test_borrow_treasury_cap_total_supply() {
     let admin_address = @0xA;
 
     let mut scenario = test_scenario::begin(@0);
@@ -506,7 +506,7 @@ fun test_borrow_treasury_cap_immut_total_supply() {
     scenario.next_tx(admin_address);
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
-        let cap_ref = treasury::borrow_treasury_cap_immut(&treasury);
+        let cap_ref = treasury::borrow_treasury_cap(&treasury);
         let supply = iota::coin::total_supply(cap_ref);
         // For a freshly initialized coin, supply should be 0
         assert!(supply == 0, 0);
@@ -902,7 +902,7 @@ fun test_update_and_verify_description() {
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         // Verify the initial description
-        let metadata = treasury::borrow_metadata_immut(&treasury);
+        let metadata = treasury::borrow_metadata(&treasury);
         let desc = get_description(metadata);
         assert!(desc == std::string::utf8(b"Example Regulated Coin"), 42);
         test_scenario::return_shared(treasury);
@@ -925,7 +925,7 @@ fun test_update_and_verify_description() {
     {
         let treasury = scenario.take_shared<Treasury<REGULATED_COIN>>();
         // Verify the description was updated
-        let metadata = treasury::borrow_metadata_immut(&treasury);
+        let metadata = treasury::borrow_metadata(&treasury);
         let desc = get_description(metadata);
         assert!(desc == new_description, 42);
         test_scenario::return_shared(treasury);
