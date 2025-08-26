@@ -61,7 +61,6 @@ public struct PauseEvent has copy, drop, store { enabled: bool }
 public struct DenyListChangeEvent has copy, drop, store { address: address, added: bool }
 
 /// Initialize the regulated coin: creates the regulated currency and sets up the shared treasury.
-#[allow(lint(share_owned))]
 fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
     let decimals = 9;
     let symbol = b"REGULATED_COIN";
@@ -81,13 +80,11 @@ fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
         ctx,
     );
 
-    let (admin_cap, treasury)= new(treasury_cap, deny_cap, metadata, ctx);
-
+    let admin_cap = new(treasury_cap, deny_cap, metadata, ctx);
     transfer::public_transfer(
         admin_cap,
         ctx.sender(),
     );
-    transfer::public_share_object(treasury);
 }
 
 /// Create a Treasury with TreasuryCap and DenyCapV1.
@@ -96,14 +93,16 @@ fun new(
     deny_cap: DenyCapV1<REGULATED_COIN>,
     metadata: CoinMetadata<REGULATED_COIN>,
     ctx: &mut TxContext
-): (AdminCap, Treasury) {
+): AdminCap {
     let mut treasury = Treasury { id: object::new(ctx) };
     let admin_cap = AdminCap { id: object::new(ctx) };
     dof::add(&mut treasury.id, CoinMetadataKey {}, metadata);
     dof::add(&mut treasury.id, DenyCapV1Key {}, deny_cap);
     dof::add(&mut treasury.id, TreasuryCapKey {}, treasury_cap);
 
-    (admin_cap, treasury)
+
+    transfer::public_share_object(treasury);
+    admin_cap
 }
 
 /// Create a new SupplyManagerCap and authorize it, there can only be one SupplyManagerCap at a time.
