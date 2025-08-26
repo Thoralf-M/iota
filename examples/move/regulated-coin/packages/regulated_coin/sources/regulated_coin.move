@@ -106,7 +106,6 @@ fun new(
     (admin_cap, treasury)
 }
 
-
 /// Create a new SupplyManagerCap and authorize it, there can only be one SupplyManagerCap at a time.
 public fun new_supply_manager(
     treasury: &mut Treasury,
@@ -139,7 +138,9 @@ public fun unauthorize_supply_manager(
     df::remove<SupplyManagerKey, ID>(&mut treasury.id, SupplyManagerKey {});
 }
 
-/// Adds the given address to the deny list.
+/// Adds the given address to the deny list, preventing it from interacting with the specified
+/// coin type as an input to a transaction. Additionally at the start of the next epoch, the
+/// address will be unable to receive objects of this coin type.
 public fun block_address(
     treasury: &mut Treasury,
     _: &AdminCap,
@@ -151,7 +152,9 @@ public fun block_address(
     event::emit(DenyListChangeEvent { address, added: true });
 }
 
-/// Removes an address from the deny list.
+/// Removes an address from the deny list. Similar to `block_address`, the effect for input
+/// objects will be immediate, but the effect for receiving objects will be delayed until the
+/// next epoch.
 public fun unblock_address(
     treasury: &mut Treasury,
     _: &AdminCap,
@@ -265,18 +268,11 @@ fun borrow_deny_cap_mut(treasury: &mut Treasury): &mut DenyCapV1<REGULATED_COIN>
     dof::borrow_mut(&mut treasury.id, DenyCapV1Key {})
 }
 
-/// Assert authorized supply manager.
+// Internal helper to assert that the provided supply manager cap exists and is authorized in the treasury.
 fun assert_authorized_supply_manager(treasury: &Treasury, supply_manager_cap: &SupplyManagerCap) {
     assert!(df::exists_(&treasury.id, SupplyManagerKey {}), ENoSupplyManagerSet);
     let authorized_id = df::borrow<SupplyManagerKey, ID>(&treasury.id, SupplyManagerKey {});
     assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
-}
-
-
-#[test_only]
-public fun test_init(ctx: &mut TxContext) {
-    let witness = REGULATED_COIN {};
-    init(witness, ctx);
 }
 
 // Event accessors
@@ -287,3 +283,9 @@ public fun burn_event_actor(e: &BurnEvent): address { e.actor }
 public fun pause_event_enabled(e: &PauseEvent): bool { e.enabled }
 public fun deny_list_change_event_address(e: &DenyListChangeEvent): address { e.address }
 public fun deny_list_change_event_added(e: &DenyListChangeEvent): bool { e.added }
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    let witness = REGULATED_COIN {};
+    init(witness, ctx);
+}
