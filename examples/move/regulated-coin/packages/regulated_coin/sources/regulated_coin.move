@@ -62,7 +62,7 @@ public struct DenyListChangeEvent has copy, drop, store { address: address, adde
 
 /// Initialize the regulated coin: creates the regulated currency and sets up the shared treasury.
 fun init(witness: REGULATED_COIN, ctx: &mut TxContext) {
-    let decimals = 9;
+    let decimals = 6;
     let symbol = b"REGULATED_COIN";
     let name = b"Regulated Coin";
     let description = b"Example Regulated Coin";
