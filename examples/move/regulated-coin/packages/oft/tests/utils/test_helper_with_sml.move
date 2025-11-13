@@ -118,7 +118,7 @@ public fun quote(
 }
 
 /// Execute the complete send call chain: endpoint.send -> SML.send -> OFT.confirm_send
-public fun execute_send_call<T>(
+public fun execute_send_call(
     scenario: &mut Scenario,
     sender: OFTSender,
     oft_send_context: OFTSendContext,
@@ -130,7 +130,7 @@ public fun execute_send_call<T>(
     let endpoint = deployments.take_shared_object<EndpointV2>(scenario, src_eid);
     let sml = deployments.take_shared_object<SimpleMessageLib>(scenario, src_eid);
     let mut oapp = deployments.take_shared_object<OApp>(scenario, src_eid);
-    let oft = deployments.take_shared_object<OFT<T>>(scenario, src_eid);
+    let oft = deployments.take_shared_object<OFT>(scenario, src_eid);
     let mut messaging_channel = deployments.take_shared_object<MessagingChannel>(scenario, src_eid);
 
     // Step 1: Endpoint processes the OFT call and returns SML call
@@ -161,7 +161,7 @@ public fun execute_send_call<T>(
     utils::transfer_coin_option(iota_coin, sender.get_address());
     utils::transfer_coin_option(zro_coin, sender.get_address());
     test_scenario::return_shared<OApp>(oapp);
-    test_scenario::return_shared<OFT<T>>(oft);
+    test_scenario::return_shared<OFT>(oft);
     test_scenario::return_shared<EndpointV2>(endpoint);
     test_scenario::return_shared<SimpleMessageLib>(sml);
     test_scenario::return_shared<MessagingChannel>(messaging_channel);

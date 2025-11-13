@@ -13,9 +13,10 @@ module oft::oft_tests;
 use call::call_cap;
 use endpoint_v2::endpoint_v2::{Self, AdminCap as EndpointAdminCap, EndpointV2};
 use oapp::oapp::{Self, AdminCap, OApp};
-use oft::{oft::{Self, OFT}, test_coin::{Self, TEST_COIN}};
+use oft::{oft::{Self, OFT}};
 use std::u64;
-use iota::{coin::{CoinMetadata, Coin}, test_scenario::{Self, Scenario}, test_utils};
+use iota::{coin::Coin, test_scenario::{Self, Scenario}, test_utils, deny_list::{Self, DenyList}};
+use regulated_coin::regulated_coin::{Self, REGULATED_COIN, Treasury, AdminCap as RegulatedAdminCap};
 
 // === Test Constants ===
 
@@ -42,36 +43,44 @@ fun test_create_oft_edge_local_decimals() {
 
     let endpoint = setup_endpoint(&mut scenario, EID);
 
-    // Create test coin with invalid decimal configuration
-    let (treasury_cap, coin_metadata) = test_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
-    transfer::public_share_object(coin_metadata);
+    // Create regulated coin for testing
+    let (treasury, admin_cap_rc) = regulated_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
+    transfer::public_share_object(treasury);
+    transfer::public_transfer(admin_cap_rc, ALICE);
 
     scenario.next_tx(ALICE);
-    let coin_metadata = scenario.take_shared<CoinMetadata<TEST_COIN>>();
+    let mut treasury = scenario.take_shared<Treasury>();
+    let admin_cap_rc = scenario.take_from_sender<RegulatedAdminCap>();
+
+
+    // Create SupplyManagerCap
+    let supply_manager_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap_rc, scenario.ctx());
+
+    // Get coin metadata
+    let coin_metadata = regulated_coin::borrow_metadata(&treasury);
 
     // Create OApp and CallCap for the OFT
     let oft_cap = call_cap::new_package_cap_for_test(scenario.ctx());
-    let admin_cap = oapp::create_admin_cap_for_test(scenario.ctx());
-    let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap, scenario.ctx());
+    let admin_cap_oft = oapp::create_admin_cap_for_test(scenario.ctx());
+    let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap_oft, scenario.ctx());
 
-    // This should fail due to invalid decimals
-    let (oft, migration_cap) = oft::init_oft_for_test<TEST_COIN>(
+    // This should pass - shared decimals equal to local decimals
+    let (oft, migration_cap) = oft::init_oft_for_test(
         &oapp,
         oft_cap,
-        treasury_cap,
-        &coin_metadata,
+        supply_manager_cap,
+        coin_metadata,
         shared_decimals,
         scenario.ctx(),
     );
 
-    // This line should never be reached due to the expected failure
-    oapp::share_oapp_for_test(oapp);
-    oft::share_oft_for_test(oft);
-    transfer::public_transfer(admin_cap, ALICE);
+    // Clean up
     transfer::public_transfer(migration_cap, ALICE);
-
-    // Note: oft_cap was consumed by create_oft
-    test_utils::destroy(coin_metadata);
+    transfer::public_transfer(admin_cap_rc, ALICE);
+    test_scenario::return_shared<Treasury>(treasury);
+    test_utils::destroy(oapp);
+    test_utils::destroy(oft);
+    test_utils::destroy(admin_cap_oft);
     test_utils::destroy(endpoint);
     scenario.end();
 }
@@ -87,24 +96,35 @@ fun test_create_oft_invalid_local_decimals() {
 
     let endpoint = setup_endpoint(&mut scenario, EID);
 
-    // Create test coin with invalid decimal configuration
-    let (treasury_cap, coin_metadata) = test_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
-    transfer::public_share_object(coin_metadata);
+    // Create regulated coin for testing
+    let (treasury, admin_cap_rc) = regulated_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
+    transfer::public_share_object(treasury);
+    transfer::public_transfer(admin_cap_rc, ALICE);
 
     scenario.next_tx(ALICE);
-    let coin_metadata = scenario.take_shared<CoinMetadata<TEST_COIN>>();
+    let mut treasury = scenario.take_shared<Treasury>();
+    let admin_cap_rc = scenario.take_from_sender<RegulatedAdminCap>();
+
+    // Create SupplyManagerCap
+    let supply_manager_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap_rc, scenario.ctx());
+
+    // Transfer the regulated coin AdminCap away since we don't need it anymore
+    transfer::public_transfer(admin_cap_rc, ALICE);
+
+    // Get coin metadata
+    let coin_metadata = regulated_coin::borrow_metadata(&treasury);
 
     // Create OApp and CallCap for the OFT
     let oft_cap = call_cap::new_package_cap_for_test(scenario.ctx());
-    let admin_cap = oapp::create_admin_cap_for_test(scenario.ctx());
-    let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap, scenario.ctx());
+    let admin_cap_oft = oapp::create_admin_cap_for_test(scenario.ctx());
+    let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap_oft, scenario.ctx());
 
     // This should fail due to invalid decimals
-    let (oft, migration_cap) = oft::init_oft_for_test<TEST_COIN>(
+    let (oft, migration_cap) = oft::init_oft_for_test(
         &oapp,
         oft_cap,
-        treasury_cap,
-        &coin_metadata,
+        supply_manager_cap,
+        coin_metadata,
         shared_decimals,
         scenario.ctx(),
     );
@@ -112,11 +132,11 @@ fun test_create_oft_invalid_local_decimals() {
     // This line should never be reached due to the expected failure
     oapp::share_oapp_for_test(oapp);
     oft::share_oft_for_test(oft);
-    transfer::public_transfer(admin_cap, ALICE);
+    transfer::public_transfer(admin_cap_oft, ALICE);
     transfer::public_transfer(migration_cap, ALICE);
+    test_scenario::return_shared<Treasury>(treasury);
 
     // Note: oft_cap was consumed by create_oft
-    test_utils::destroy(coin_metadata);
     test_utils::destroy(endpoint);
     scenario.end();
 }
@@ -264,24 +284,27 @@ fun test_fee_recipient_receives_fee() {
 
     // Create initial coin balance
     let initial_amount = 1000000000000000000u64; // 1 token in 18 decimals
-    let mut coin = oft::mint_for_testing(&mut ctx.oft, initial_amount, scenario.ctx());
+    let OFTTestContext { oft: oft_ref, treasury: treasury_ref, deny_list: deny_list_ref, .. } = &mut ctx;
+    let mut coin = oft::mint_for_testing(oft_ref, initial_amount,  treasury_ref, deny_list_ref, scenario.ctx());
 
     // Calculate expected amounts
     let amount_to_send = 500000000000000000u64; // 0.5 tokens
     let expected_fee = (((amount_to_send as u128) * (fee_bps as u128)) / 10000u128) as u64; // 5% fee
     let expected_received = amount_to_send - expected_fee;
-    let expected_dust_removed = oft::remove_dust_for_test(&ctx.oft, expected_received);
+    let expected_dust_removed = oft::remove_dust_for_test(oft_ref, expected_received);
 
     // Record initial balances
     let initial_coin_balance = coin.value();
 
     // Perform debit operation
     let (amount_sent_ld, amount_received_ld) = oft::debit_for_test(
-        &mut ctx.oft,
+        oft_ref,
         &mut coin,
         EID,
         amount_to_send,
         0, // min_amount_ld = 0 for this test
+        treasury_ref,
+        deny_list_ref,
         scenario.ctx(),
     );
 
@@ -295,7 +318,7 @@ fun test_fee_recipient_receives_fee() {
     scenario.next_tx(fee_recipient);
 
     // Check if fee recipient received the fee
-    let fee_recipient_balance = test_scenario::take_from_address<Coin<TEST_COIN>>(&scenario, fee_recipient);
+    let fee_recipient_balance = test_scenario::take_from_address<Coin<REGULATED_COIN>>(&scenario, fee_recipient);
     assert!(fee_recipient_balance.value() == amount_sent_ld - amount_received_ld, 103);
 
     test_scenario::return_to_address(fee_recipient, fee_recipient_balance);
@@ -348,16 +371,17 @@ public fun setup_endpoint(scenario: &mut Scenario, eid: u32): EndpointV2 {
 }
 
 /// Helper structure to hold OFT test context
-public struct OFTTestContext<phantom T> {
+public struct OFTTestContext {
     oapp: OApp,
-    oft: OFT<T>,
+    oft: OFT,
     admin_cap: AdminCap,
-    coin_metadata: CoinMetadata<T>,
     endpoint: EndpointV2,
+    treasury: Treasury,
+    deny_list: DenyList,
 }
 
 /// Setup OFT with default 18 local decimals and specified shared decimals
-public fun setup_oft_with_defaults(scenario: &mut Scenario, shared_decimals: u8): OFTTestContext<TEST_COIN> {
+public fun setup_oft_with_defaults(scenario: &mut Scenario, shared_decimals: u8): OFTTestContext {
     setup_oft_with_decimals(scenario, 18, shared_decimals)
 }
 
@@ -366,53 +390,75 @@ public fun setup_oft_with_decimals(
     scenario: &mut Scenario,
     local_decimals: u8,
     shared_decimals: u8,
-): OFTTestContext<TEST_COIN> {
+): OFTTestContext {
     let endpoint = setup_endpoint(scenario, EID);
+    // Create DenyList with system address (only once)
+    scenario.next_tx(@0x0);
+    deny_list::create_for_test(scenario.ctx());
 
-    // Create test coin with specified decimals
-    let (treasury_cap, coin_metadata) = test_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
-    transfer::public_share_object(coin_metadata);
+    // Create regulated coin for testing
+    let (treasury, admin_cap_rc) = regulated_coin::init_for_testing_with_decimals(local_decimals, scenario.ctx());
+
+    transfer::public_share_object(treasury);
+    // Transfer AdminCap to ALICE
+    scenario.next_tx(@0x0);
+    transfer::public_transfer(admin_cap_rc, ALICE);
 
     scenario.next_tx(ALICE);
-    let coin_metadata = scenario.take_shared<CoinMetadata<TEST_COIN>>();
+
+
+    let mut treasury = scenario.take_shared<Treasury>();
+    let admin_cap_rc = scenario.take_from_sender<RegulatedAdminCap>();
+    let deny_list = scenario.take_shared<DenyList>();
+
+    // Create SupplyManagerCap
+    let supply_manager_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap_rc, scenario.ctx());
+
+    // Transfer the regulated coin AdminCap away since we don't need it anymore
+    transfer::public_transfer(admin_cap_rc, ALICE);
+
+    // Get coin metadata
+    let coin_metadata = regulated_coin::borrow_metadata(&treasury);
 
     // Create OApp and CallCap for the OFT
     let oft_cap = call_cap::new_package_cap_for_test(scenario.ctx());
     let admin_cap = oapp::create_admin_cap_for_test(scenario.ctx());
     let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap, scenario.ctx());
 
-    let (oft, migration_cap) = oft::init_oft_for_test<TEST_COIN>(
+    let (oft, migration_cap) = oft::init_oft_for_test(
         &oapp,
         oft_cap,
-        treasury_cap,
-        &coin_metadata,
+        supply_manager_cap,
+        coin_metadata,
         shared_decimals,
         scenario.ctx(),
     );
     transfer::public_transfer(migration_cap, ALICE);
+    test_scenario::return_shared<DenyList>(deny_list);
+    test_scenario::return_shared<Treasury>(treasury);
 
-    // Return the coin_metadata that was shared
-    test_scenario::return_shared(coin_metadata);
-
-    // Take the coin_metadata from shared state for the context
     scenario.next_tx(ALICE);
-    let coin_metadata = scenario.take_shared<CoinMetadata<TEST_COIN>>();
+    let treasury = scenario.take_shared<Treasury>();
+    let deny_list = scenario.take_shared<DenyList>();
 
     OFTTestContext {
         oapp,
         oft,
         admin_cap,
-        coin_metadata,
         endpoint,
+        treasury,
+        deny_list,
     }
 }
 
 /// Cleanup OFT test context
-public fun cleanup_oft_context<T>(ctx: OFTTestContext<T>) {
-    let OFTTestContext { oapp, oft, admin_cap, coin_metadata, endpoint } = ctx;
+public fun cleanup_oft_context(ctx: OFTTestContext) {
+    let OFTTestContext { oapp, oft, admin_cap, endpoint, treasury, deny_list } = ctx;
     test_utils::destroy(oapp);
     test_utils::destroy(oft);
     test_utils::destroy(admin_cap);
-    test_utils::destroy(coin_metadata);
     test_utils::destroy(endpoint);
+    // Return shared objects to their shared state
+    transfer::public_share_object(treasury);
+    test_utils::destroy(deny_list);
 }

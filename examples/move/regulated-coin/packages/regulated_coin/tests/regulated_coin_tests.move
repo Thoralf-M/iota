@@ -312,7 +312,7 @@ fun test_events_emitted() {
         let mints = event::events_by_type<MintEvent>();
         assert!(vector::length(&mints) == 1, 1001);
         assert!(regulated_coin::mint_event_amount(&mints[0]) == 100, 1002);
-        assert!(regulated_coin::mint_event_recipient(&mints[0]) == recipient_address, 1003);
+        assert!(regulated_coin::mint_event_recipient(&mints[0]).extract() == recipient_address, 1003);
         test_scenario::return_shared(treasury);
         scenario.return_to_sender(sm_cap);
         test_scenario::return_shared(deny_list);
@@ -1291,5 +1291,79 @@ fun test_old_supply_manager_burn_fails_with_new_active() {
         test_scenario::return_shared(deny_list);
     };
     
+    scenario.end();
+}
+
+#[test]
+fun test_destroy_supply_manager_cap() {
+    let admin_address = @0xA;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let supply_manager_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        // Destroy the supply manager cap
+        regulated_coin::destroy_supply_manager_cap(supply_manager_cap);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+
+    scenario.end();
+}
+
+#[test]
+fun test_mint_coin() {
+    use regulated_coin::regulated_coin::MintEvent;
+    let admin_address = @0xA;
+    let supply_manager_address = @0xB;
+
+    let mut scenario = test_scenario::begin(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    scenario.next_tx(admin_address);
+    {
+        regulated_coin::test_init(scenario.ctx());
+    };
+
+    scenario.next_tx(admin_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        let supply_manager_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+        transfer::public_transfer(supply_manager_cap, supply_manager_address);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(admin_cap);
+    };
+
+    scenario.next_tx(supply_manager_address);
+    {
+        let mut treasury = scenario.take_shared<Treasury>();
+        let supply_manager_cap = scenario.take_from_sender<SupplyManagerCap>();
+        let deny_list = scenario.take_shared<DenyList>();
+        // Mint coin
+        let minted_coin = regulated_coin::mint_coin(&mut treasury, &supply_manager_cap, &deny_list, 50, scenario.ctx());
+        assert!(minted_coin.value() == 50, 0);
+        // Transfer the minted coin to the supply manager
+        transfer::public_transfer(minted_coin, supply_manager_address);
+        // Check that MintEvent was emitted
+        assert!(event::num_events() == 1, 1000);
+        let mint_events = event::events_by_type<MintEvent>();
+        assert!(vector::length(&mint_events) == 1, 1001);
+        assert!(regulated_coin::mint_event_amount(&mint_events[0]) == 50, 1002);
+        assert!(regulated_coin::mint_event_recipient(&mint_events[0]).is_none(), 1003);
+        test_scenario::return_shared(treasury);
+        scenario.return_to_sender(supply_manager_cap);
+        test_scenario::return_shared(deny_list);
+    };
+
     scenario.end();
 }

@@ -20,7 +20,7 @@ public enum OFTSender has drop {
 // === Creation ===
 
 /// Creates an OFTSender for a transaction-based sender.
-public fun tx_sender(ctx: &TxContext): OFTSender {
+public fun tx_sender(ctx: &mut TxContext): OFTSender {
     OFTSender::Tx(ctx.sender())
 }
 

@@ -6,11 +6,11 @@ use oft::{
     deployments::{Self, Deployments},
     oft::OFT,
     oft_test_helper,
-    scenario_utils,
-    test_coin::TEST_COIN,
-    test_helper_with_sml
+    scenario_utils
 };
+use regulated_coin::regulated_coin::REGULATED_COIN;
 use iota::{clock::{Self, Clock}, coin, event, iota::IOTA, test_scenario::{Self, Scenario}, test_utils};
+use oft::test_helper_with_sml;
 
 // === Test Constants ===
 
@@ -39,16 +39,16 @@ fun test_oft_send_vanilla() {
 
     // Verify OFT setup completed successfully
     scenario.next_tx(SENDER);
-    let oft = scenario_utils::take_shared_by_address<OFT<TEST_COIN>>(
+    let oft = scenario_utils::take_shared_by_address<OFT>(
         &mut scenario,
-        deployments.get_deployment<OFT<TEST_COIN>>(SRC_EID),
+        deployments.get_deployment<OFT>(SRC_EID),
     );
 
     // Verify OFT version
     let (version_hash, version_number) = oft.oft_version();
     assert!(version_hash == 1 && version_number == 1, E_INVALID_VERSION);
 
-    test_scenario::return_shared<OFT<TEST_COIN>>(oft);
+    test_scenario::return_shared<OFT>(oft);
 
     // Execute real OFT send operation
     let native_fee = iota::coin::mint_for_testing<iota::iota::IOTA>(1000000, scenario.ctx()); // 0.001 IOTA
@@ -68,7 +68,7 @@ fun test_oft_send_vanilla() {
     );
 
     // Execute the send call through the SML to complete the message sending
-    test_helper_with_sml::execute_send_call<TEST_COIN>(
+    test_helper_with_sml::execute_send_call(
         &mut scenario,
         oft_sender,
         oft_receipt_with_sender,
@@ -98,7 +98,7 @@ fun test_oft_send_vanilla() {
     let encoded_packet = get_encoded_packet_from_packet_sent_event(&packet_sent_event);
 
     // Get initial recipient balance (should be 0)
-    let recipient_initial_balance = get_test_coin_balance<TEST_COIN>(&mut scenario, RECIPIENT);
+    let recipient_initial_balance = get_test_coin_balance<REGULATED_COIN>(&mut scenario, RECIPIENT);
 
     // Verify the message
     verify_message(&mut scenario, &test_clock, SENDER, &deployments, DST_EID, encoded_packet);
@@ -107,7 +107,7 @@ fun test_oft_send_vanilla() {
     handle_message_receive(&mut scenario, SENDER, &deployments, DST_EID, encoded_packet, false);
 
     // Check recipient received the expected amount
-    let recipient_final_balance = get_test_coin_balance<TEST_COIN>(&mut scenario, RECIPIENT);
+    let recipient_final_balance = get_test_coin_balance<REGULATED_COIN>(&mut scenario, RECIPIENT);
     assert!(recipient_final_balance == recipient_initial_balance + SEND_AMOUNT, E_INVALID_RECIPIENT_BALANCE);
 
     clean(scenario, test_clock, deployments);
@@ -197,10 +197,10 @@ fun handle_message_receive(
     oft_test_helper::lz_receive(scenario, sender, deployments, dst_eid, encoded_packet, value, with_compose);
 }
 
-/// Get TEST_COIN balance for an address
+/// Get REGULATED_COIN balance for an address
 fun get_test_coin_balance<T>(scenario: &mut Scenario, addr: address): u64 {
     scenario.next_tx(addr);
-    // Get all TEST_COIN coin IDs for the address
+    // Get all REGULATED_COIN coin IDs for the address
     let coin_ids = test_scenario::ids_for_address<coin::Coin<T>>(addr);
     let mut total_balance = 0u64;
 

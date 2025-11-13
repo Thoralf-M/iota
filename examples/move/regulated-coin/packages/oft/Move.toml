@@ -7,7 +7,7 @@ edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 OApp = { git = "https://github.com/LayerZero-Labs/LayerZero-v2", subdir = "packages/layerzero-v2/iota/contracts/oapps/oapp", rev = "main" }
 OFTCommon = { git = "https://github.com/LayerZero-Labs/LayerZero-v2", subdir = "packages/layerzero-v2/iota/contracts/oapps/oft/oft-common", rev = "main" }
 PtbMoveCall = { git = "https://github.com/LayerZero-Labs/LayerZero-v2", subdir = "packages/layerzero-v2/iota/contracts/ptb-builders/ptb-move-call", rev = "main" }
-
+regulated_coin = { local = "../regulated_coin" }
 
 [addresses]
 oft = "0x0"

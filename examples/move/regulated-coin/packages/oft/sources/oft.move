@@ -15,6 +15,10 @@ use endpoint_v2::{
     messaging_receipt::MessagingReceipt,
     utils
 };
+use iota::{
+    deny_list::{DenyList},
+};
+use regulated_coin::regulated_coin::{Self, Treasury, SupplyManagerCap};
 use oapp::{endpoint_calls, oapp::{AdminCap, OApp}, oapp_info_v1};
 use oft::{
     oft_fee::{Self, OFTFee},
@@ -35,15 +39,15 @@ use oft_common::{
     oft_composer_manager::OFTComposerManager
 };
 use std::u64;
-use iota::{bag, balance::{Self, Balance}, clock::Clock, coin::{Self, Coin, CoinMetadata, TreasuryCap}, event, iota::IOTA};
+use iota::{bag, clock::Clock, coin::{Coin, CoinMetadata}, event, iota::IOTA};
 use utils::{bytes32::{Self, Bytes32}, package};
 use zro::zro::ZRO;
+use regulated_coin::regulated_coin::REGULATED_COIN;
 
 // === Errors ===
 
 const EComposeMsgNotAllowed: u64 = 1;
 const EComposeMsgRequired: u64 = 2;
-const EInsufficientBalance: u64 = 3;
 const EInvalidAdminCap: u64 = 4;
 const EInvalidComposeQueue: u64 = 5;
 const EInvalidLocalDecimals: u64 = 6;
@@ -65,7 +69,7 @@ const SEND_AND_CALL_TYPE: u16 = 2;
 // === Structs ===
 
 /// Omnichain Fungible Token (OFT) - Core contract enabling seamless cross-chain token transfers.
-public struct OFT<phantom T> has key {
+public struct OFT has key {
     /// Unique identifier for this OFT instance
     id: UID,
     /// Upgrade version used for upgrade compatibility(IOTA native upgrade mechanism)
@@ -78,8 +82,8 @@ public struct OFT<phantom T> has key {
     migration_cap: address,
     /// Capability granting this OFT authorization to make cross-chain calls via LayerZero
     oft_cap: CallCap,
-    /// Token management strategy determining mint/burn vs escrow/release behavior
-    treasury: OFTTreasury<T>,
+    /// SupplyManagerCap used for mint/burn operations
+    supply_manager_cap: SupplyManagerCap,
     /// Address reference to the coin metadata object for this token type
     coin_metadata: address,
     /// Multiplier for converting between local decimals and shared decimals (10^(local-shared))
@@ -93,20 +97,6 @@ public struct OFT<phantom T> has key {
     /// Manages ratelimit settings and inbound/outbound transfer flow control by token amount
     inbound_rate_limiter: RateLimiter,
     outbound_rate_limiter: RateLimiter,
-}
-
-/// Token management strategy defining how cross-chain transfers handle token supply.
-public enum OFTTreasury<phantom T> has store {
-    /// Standard OFT that mints/burns tokens using treasury capability.
-    OFT {
-        /// Treasury capability granting mint/burn privileges for the token type T
-        treasury_cap: TreasuryCap<T>,
-    },
-    /// Adapter OFT that escrows/releases existing tokens from a balance pool.
-    OFTAdapter {
-        /// Token balance pool used for escrow (outbound) and release (inbound) operations
-        escrow: Balance<T>,
-    },
 }
 
 // === Events ===
@@ -148,21 +138,21 @@ public struct OFTReceivedEvent has copy, drop {
 
 // === OFT Initialization ===
 
-/// Initializes a standard OFT implementation using the mint/burn treasury model.
+/// Initializes a SupplyManagerCap-based OFT implementation using an external SupplyManager for mint/burn operations.
 ///
 /// **Parameters**:
 /// - `oapp`: Configured OApp instance for cross-chain messaging
 /// - `oft_cap`: CallCap granting authorization for LayerZero operations
-/// - `treasury_cap`: Treasury capability enabling mint/burn operations
+/// - `supply_manager_cap`: SupplyManagerCap used for mint/burn operations
 /// - `coin_metadata`: Metadata object defining token properties and decimals
 /// - `shared_decimals`: Standardized decimal precision for cross-chain transfers
 ///
 /// **Returns**: Migration capability for future migrations of this OFT
-public(package) fun init_oft<T>(
+public(package) fun init_oft(
     oapp: &OApp,
     oft_cap: CallCap,
-    treasury_cap: TreasuryCap<T>,
-    coin_metadata: &CoinMetadata<T>,
+    supply_manager_cap: SupplyManagerCap,
+    coin_metadata: &CoinMetadata<REGULATED_COIN>,
     shared_decimals: u8,
     ctx: &mut TxContext,
 ): MigrationCap {
@@ -172,38 +162,7 @@ public(package) fun init_oft<T>(
         oft_cap,
         coin_metadata,
         shared_decimals,
-        OFTTreasury::OFT { treasury_cap },
-        false,
-        ctx,
-    );
-    transfer::share_object(oft);
-    migration_cap
-}
-
-/// Initializes an adapter OFT implementation using the escrow/release treasury model.
-///
-/// **Parameters**:
-/// - `oapp`: Configured OApp instance for cross-chain messaging
-/// - `oft_cap`: CallCap granting authorization for LayerZero operations
-/// - `coin_metadata`: Metadata object defining token properties and decimals
-/// - `shared_decimals`: Standardized decimal precision for cross-chain transfers
-///
-/// **Returns**: Migration capability for future migrations of this OFT adapter
-public(package) fun init_oft_adapter<T>(
-    oapp: &OApp,
-    oft_cap: CallCap,
-    coin_metadata: &CoinMetadata<T>,
-    shared_decimals: u8,
-    ctx: &mut TxContext,
-): MigrationCap {
-    oapp.assert_oapp_cap(&oft_cap);
-    let (oft, migration_cap) = init_oft_internal(
-        oapp,
-        oft_cap,
-        coin_metadata,
-        shared_decimals,
-        OFTTreasury::OFTAdapter { escrow: balance::zero<T>() },
-        true,
+        supply_manager_cap,
         ctx,
     );
     transfer::share_object(oft);
@@ -221,8 +180,8 @@ public(package) fun init_oft_adapter<T>(
 /// - `OFTLimit`: Send restrictions and limits
 /// - `vector<OFTFeeDetail>`: Fee details
 /// - `OFTReceipt`: Final amounts after dust removal and validation
-public fun quote_oft<T>(
-    self: &OFT<T>,
+public fun quote_oft(
+    self: &OFT,
     send_param: &SendParam,
     clock: &Clock,
 ): (OFTLimit, vector<OFTFeeDetail>, OFTReceipt) {
@@ -260,8 +219,8 @@ public fun quote_oft<T>(
 /// - `pay_in_zro`: Whether to use ZRO tokens for fee payment
 ///
 /// **Returns**: Quote call to send to the endpoint to get the messaging fees
-public fun quote_send<T>(
-    self: &OFT<T>,
+public fun quote_send(
+    self: &OFT,
     oapp: &OApp,
     sender: address,
     send_param: &SendParam,
@@ -290,8 +249,8 @@ public fun quote_send<T>(
 ///
 /// **Returns**
 /// - `MessagingFee`: Fee required for sending the message
-public fun confirm_quote_send<T>(
-    self: &OFT<T>,
+public fun confirm_quote_send(
+    self: &OFT,
     oapp: &OApp,
     call: Call<EndpointQuoteParam, MessagingFee>,
 ): MessagingFee {
@@ -315,15 +274,17 @@ public fun confirm_quote_send<T>(
 /// **Returns**:
 /// - `Call<EndpointSendParam, MessagingReceipt>`: Endpoint call for message sending (execute this first)
 /// - `OFTSendContext`: Send context containing the OFTReceipt and sender info required for `confirm_send()`
-public fun send<T>(
-    self: &mut OFT<T>,
+public fun send(
+    self: &mut OFT,
     oapp: &mut OApp,
     sender: &OFTSender,
     send_param: &SendParam,
-    coin_provided: &mut Coin<T>,
+    coin_provided: &mut Coin<REGULATED_COIN>,
     native_coin_fee: Coin<IOTA>,
     zro_coin_fee: Option<Coin<ZRO>>,
     refund_address: Option<address>,
+    treasury: &mut Treasury,
+    deny_list: &mut DenyList,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Call<EndpointSendParam, MessagingReceipt>, OFTSendContext) {
@@ -335,6 +296,8 @@ public fun send<T>(
         send_param.dst_eid(),
         send_param.amount_ld(),
         send_param.min_amount_ld(),
+        treasury,
+        deny_list,
         ctx,
     );
     let oft_receipt = oft_receipt::create(amount_sent_ld, amount_received_ld);
@@ -377,8 +340,8 @@ public fun send<T>(
 /// - `OFTReceipt`: Receipt containing OFT-specific transfer details
 /// - `Option<Coin<IOTA>>`: Unspent native token fees (None if auto-refunded, Some if returned to caller)
 /// - `Option<Coin<ZRO>>`: Unspent ZRO token fees (None if auto-refunded, Some if returned to caller)
-public fun confirm_send<T>(
-    self: &OFT<T>,
+public fun confirm_send(
+    self: &OFT,
     oapp: &mut OApp,
     sender: &OFTSender,
     call: Call<EndpointSendParam, MessagingReceipt>,
@@ -419,17 +382,19 @@ public fun confirm_send<T>(
 /// - `clock`: Clock object for rate limiting and timestamp-based operations
 ///
 /// **Note**: For transfers with compose functionality, use `lz_receive_with_compose` instead
-public fun lz_receive<T>(
-    self: &mut OFT<T>,
+public fun lz_receive(
+    self: &mut OFT,
     oapp: &OApp,
     call: Call<LzReceiveParam, Void>,
     clock: &Clock,
+    treasury: &mut Treasury,
+    deny_list: &mut DenyList,
     ctx: &mut TxContext,
 ) {
     self.assert_upgrade_version();
     self.pausable.assert_not_paused();
 
-    let (_src_eid, _nonce, _guid, coin_credited, oft_msg) = self.lz_receive_internal(oapp, call, clock, ctx);
+    let (_src_eid, _nonce, _guid, coin_credited, oft_msg) = self.lz_receive_internal(oapp, call, clock, treasury, deny_list, ctx);
     assert!(!oft_msg.is_composed(), EComposeMsgNotAllowed);
     utils::transfer_coin(coin_credited, oft_msg.send_to());
 }
@@ -444,19 +409,21 @@ public fun lz_receive<T>(
 /// - `clock`: Clock object for rate limiting and timestamp-based operations
 ///
 /// **Note**: For simple transfers without compose, use `lz_receive` instead
-public fun lz_receive_with_compose<T>(
-    self: &mut OFT<T>,
+public fun lz_receive_with_compose(
+    self: &mut OFT,
     oapp: &OApp,
     compose_queue: &mut ComposeQueue,
     composer_manager: &mut OFTComposerManager,
     call: Call<LzReceiveParam, Void>,
     clock: &Clock,
+    treasury: &mut Treasury,
+    deny_list: &mut DenyList,
     ctx: &mut TxContext,
 ) {
     self.assert_upgrade_version();
     self.pausable.assert_not_paused();
 
-    let (src_eid, nonce, guid, coin_credited, oft_msg) = self.lz_receive_internal(oapp, call, clock, ctx);
+    let (src_eid, nonce, guid, coin_credited, oft_msg) = self.lz_receive_internal(oapp, call, clock, treasury, deny_list, ctx);
     assert!(oft_msg.is_composed(), EComposeMsgRequired);
     let composer = endpoint_v2::get_composer(compose_queue);
     assert!(oft_msg.send_to() == composer, EInvalidComposeQueue);
@@ -480,8 +447,8 @@ public fun lz_receive_with_compose<T>(
 /// - `admin_cap`: Admin capability for authorization
 /// - `endpoint`: LayerZero v2 endpoint for registration
 /// - `lz_receive_info`: Original PTB execution instructions generated by `oft_ptb_builder`
-public fun register_oapp<T>(
-    self: &OFT<T>,
+public fun register_oapp(
+    self: &OFT,
     oapp: &OApp,
     admin_cap: &AdminCap,
     endpoint: &mut EndpointV2,
@@ -494,7 +461,7 @@ public fun register_oapp<T>(
         object::id_address(oapp),
         vector[],
         lz_receive_info,
-        oft_info_v1::create(package::package_of_type<OFT<T>>(), object::id_address(self)).encode(),
+        oft_info_v1::create(package::package_of_type<OFT>(), object::id_address(self)).encode(),
     );
     endpoint_calls::register_oapp(oapp, admin_cap, endpoint, oapp_info.encode(), ctx);
 }
@@ -504,7 +471,7 @@ public fun register_oapp<T>(
 /// **Parameters**:
 /// - `admin`: Admin capability proving authorization
 /// - `paused`: New pause state (true to pause, false to unpause)
-public fun set_pause<T>(self: &mut OFT<T>, admin: &AdminCap, paused: bool) {
+public fun set_pause(self: &mut OFT, admin: &AdminCap, paused: bool) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     self.pausable.set_pause(paused);
@@ -517,7 +484,7 @@ public fun set_pause<T>(self: &mut OFT<T>, admin: &AdminCap, paused: bool) {
 /// **Parameters**:
 /// - `admin`: Admin capability proving authorization
 /// - `fee_deposit_address`: New address for fee deposits (cannot be zero address)
-public fun set_fee_deposit_address<T>(self: &mut OFT<T>, admin: &AdminCap, fee_deposit_address: address) {
+public fun set_fee_deposit_address(self: &mut OFT, admin: &AdminCap, fee_deposit_address: address) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     self.fee.set_fee_deposit_address(fee_deposit_address);
@@ -529,7 +496,7 @@ public fun set_fee_deposit_address<T>(self: &mut OFT<T>, admin: &AdminCap, fee_d
 /// - `admin`: Admin capability proving authorization
 /// - `dst_eid`: Destination endpoint ID
 /// - `fee_bps`: Fee rate in basis points (0-10,000, where 10,000 = 100%)
-public fun set_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, dst_eid: u32, fee_bps: u64) {
+public fun set_fee_bps(self: &mut OFT, admin: &AdminCap, dst_eid: u32, fee_bps: u64) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     self.fee.set_fee_bps(dst_eid, fee_bps);
@@ -540,7 +507,7 @@ public fun set_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, dst_eid: u32, fee
 /// **Parameters**:
 /// - `admin`: Admin capability proving authorization
 /// - `dst_eid`: Destination endpoint ID
-public fun unset_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, dst_eid: u32) {
+public fun unset_fee_bps(self: &mut OFT, admin: &AdminCap, dst_eid: u32) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     self.fee.unset_fee_bps(dst_eid);
@@ -551,7 +518,7 @@ public fun unset_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, dst_eid: u32) {
 /// **Parameters**:
 /// - `admin`: Admin capability proving authorization
 /// - `default_fee_bps`: Default fee rate in basis points (0-10,000)
-public fun set_default_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, default_fee_bps: u64) {
+public fun set_default_fee_bps(self: &mut OFT, admin: &AdminCap, default_fee_bps: u64) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     self.fee.set_default_fee_bps(default_fee_bps);
@@ -568,8 +535,8 @@ public fun set_default_fee_bps<T>(self: &mut OFT<T>, admin: &AdminCap, default_f
 /// - `rate_limit`: Maximum token amount allowed per window
 /// - `window_seconds`: Duration of the rate limit window in seconds
 /// - `clock`: Clock object for timestamp-based rate limit calculations
-public fun set_rate_limit<T>(
-    self: &mut OFT<T>,
+public fun set_rate_limit(
+    self: &mut OFT,
     admin: &AdminCap,
     eid: u32,
     inbound: bool,
@@ -592,7 +559,7 @@ public fun set_rate_limit<T>(
 /// - `admin`: Admin capability proving authorization
 /// - `eid`: Remote endpoint ID to unset the rate limit for
 /// - `inbound`: Whether to unset the inbound (true) or outbound (false) rate limit
-public fun unset_rate_limit<T>(self: &mut OFT<T>, admin: &AdminCap, eid: u32, inbound: bool) {
+public fun unset_rate_limit(self: &mut OFT, admin: &AdminCap, eid: u32, inbound: bool) {
     self.assert_upgrade_version();
     self.assert_admin(admin);
     if (inbound) {
@@ -610,94 +577,89 @@ public fun unset_rate_limit<T>(self: &mut OFT<T>, admin: &AdminCap, eid: u32, in
 /// - `migration_cap`: Migration capability proving authorization to perform the operation
 ///
 /// **Returns**:
-/// - `MigrationTicket<T>`: Packaged components ready for migration
-public fun migrate<T>(self: OFT<T>, migration_cap: &MigrationCap, ctx: &mut TxContext): MigrationTicket<T> {
+/// - `MigrationTicket<REGULATED_COIN>`: Packaged components ready for migration
+public fun migrate(self: OFT, migration_cap: &MigrationCap, ctx: &mut TxContext): MigrationTicket<REGULATED_COIN> {
     self.assert_upgrade_version();
     assert!(self.migration_cap == object::id_address(migration_cap), EInvalidMigrationCap);
 
-    let OFT<T> { id, oft_cap, treasury, inbound_rate_limiter, outbound_rate_limiter, fee, .. } = self;
+    let OFT { id, oft_cap, supply_manager_cap, inbound_rate_limiter, outbound_rate_limiter, fee, .. } = self;
     id.delete();
     fee.drop();
     inbound_rate_limiter.drop();
     outbound_rate_limiter.drop();
 
-    let (treasury_cap, escrow) = match (treasury) {
-        OFTTreasury::OFT { treasury_cap } => (option::some(treasury_cap), option::none()),
-        OFTTreasury::OFTAdapter { escrow } => (option::none(), option::some(escrow)),
-    };
-    migration_cap.create_migration_ticket(oft_cap, treasury_cap, escrow, bag::new(ctx))
+    let mut migration_bag = bag::new(ctx);
+    migration_bag.add(0, option::some(supply_manager_cap));
+    migration_cap.create_migration_ticket(oft_cap, option::none(), option::none(), migration_bag)
 }
 
 // === OFT View Functions ===
 
 /// Returns the OFT standard version (major, minor)
-public fun oft_version<T>(self: &OFT<T>): (u64, u64) {
+public fun oft_version(self: &OFT): (u64, u64) {
     self.assert_upgrade_version();
     (1, 1)
 }
 
 /// Returns the upgrade version of this OFT instance
-public fun upgrade_version<T>(self: &OFT<T>): u64 {
+public fun upgrade_version(self: &OFT): u64 {
     self.assert_upgrade_version();
     self.upgrade_version
 }
 
 /// Returns the address of the associated OApp object
-public fun oapp_object<T>(self: &OFT<T>): address {
+public fun oapp_object(self: &OFT): address {
     self.assert_upgrade_version();
     self.oapp_object
 }
 
 /// Returns the admin address for this OFT & OApp
-public fun admin_cap<T>(self: &OFT<T>): address {
+public fun admin_cap(self: &OFT): address {
     self.assert_upgrade_version();
     self.admin_cap
 }
 
 /// Returns the CallCap's identifier for this OFT.
 /// This serves as the OFT's unique contract identity in the LayerZero system.
-public fun oft_cap_id<T>(self: &OFT<T>): address {
+public fun oft_cap_id(self: &OFT): address {
     self.assert_upgrade_version();
     self.oft_cap.id()
 }
 
 /// Returns the migration capability address for this OFT
-public fun migration_cap<T>(self: &OFT<T>): address {
+public fun migration_cap(self: &OFT): address {
     self.assert_upgrade_version();
     self.migration_cap
 }
 
 /// Returns the address of the coin metadata object
-public fun coin_metadata<T>(self: &OFT<T>): address {
+public fun coin_metadata(self: &OFT): address {
     self.assert_upgrade_version();
     self.coin_metadata
 }
 
 /// Returns the number of decimals used for cross-chain transfers
-public fun shared_decimals<T>(self: &OFT<T>): u8 {
+public fun shared_decimals(self: &OFT): u8 {
     self.assert_upgrade_version();
     self.shared_decimals
 }
 
 /// Returns the decimal conversion rate
-public fun decimal_conversion_rate<T>(self: &OFT<T>): u64 {
+public fun decimal_conversion_rate(self: &OFT): u64 {
     self.assert_upgrade_version();
     self.decimal_conversion_rate
 }
 
-/// Returns true if this is an adapter OFT (escrow model), false if standard OFT (mint/burn model)
-public fun is_adapter<T>(self: &OFT<T>): bool {
+/// Returns true if this is an adapter OFT (escrow model), false if standard OFT (mint/burn model) or SupplyManagerCap-based OFT
+public fun is_adapter(self: &OFT): bool {
     self.assert_upgrade_version();
-    match (&self.treasury) {
-        OFTTreasury::OFTAdapter { escrow: _ } => true,
-        OFTTreasury::OFT { treasury_cap: _ } => false,
-    }
+    false
 }
 
 // === Pausable View Functions ===
 
 /// Returns whether the OFT is currently paused
-public fun is_paused<T>(self: &OFT<T>): bool {
+public fun is_paused(self: &OFT): bool {
     self.assert_upgrade_version();
     self.pausable.is_paused()
 }
@@ -705,31 +667,31 @@ public fun is_paused<T>(self: &OFT<T>): bool {
 // === Fee Management View Functions ===
 
 /// Returns true if the OFT has a fee rate greater than 0 for the specified destination
-public fun has_oft_fee<T>(self: &OFT<T>, dst_eid: u32): bool {
+public fun has_oft_fee(self: &OFT, dst_eid: u32): bool {
     self.assert_upgrade_version();
     self.fee.has_oft_fee(dst_eid)
 }
 
 /// Returns the effective fee rate for a specific destination chain
-public fun effective_fee_bps<T>(self: &OFT<T>, dst_eid: u32): u64 {
+public fun effective_fee_bps(self: &OFT, dst_eid: u32): u64 {
     self.assert_upgrade_version();
     self.fee.effective_fee_bps(dst_eid)
 }
 
 /// Returns the default fee rate
-public fun default_fee_bps<T>(self: &OFT<T>): u64 {
+public fun default_fee_bps(self: &OFT): u64 {
     self.assert_upgrade_version();
     self.fee.default_fee_bps()
 }
 
 /// Returns the fee rate for a specific destination chain
-public fun fee_bps<T>(self: &OFT<T>, dst_eid: u32): u64 {
+public fun fee_bps(self: &OFT, dst_eid: u32): u64 {
     self.assert_upgrade_version();
     self.fee.fee_bps(dst_eid)
 }
 
 /// Returns the current fee deposit address
-public fun fee_deposit_address<T>(self: &OFT<T>): address {
+public fun fee_deposit_address(self: &OFT): address {
     self.assert_upgrade_version();
     self.fee.fee_deposit_address()
 }
@@ -737,7 +699,7 @@ public fun fee_deposit_address<T>(self: &OFT<T>): address {
 // === Rate Limiter View Functions ===
 
 /// Returns the rate limit configuration for a specific endpoint ID
-public fun rate_limit_config<T>(self: &OFT<T>, eid: u32, inbound: bool): (u64, u64) {
+public fun rate_limit_config(self: &OFT, eid: u32, inbound: bool): (u64, u64) {
     self.assert_upgrade_version();
     if (inbound) {
         self.inbound_rate_limiter.rate_limit_config(eid)
@@ -747,7 +709,7 @@ public fun rate_limit_config<T>(self: &OFT<T>, eid: u32, inbound: bool): (u64, u
 }
 
 /// Returns the current amount in-flight for a specific endpoint ID's rate limit
-public fun rate_limit_in_flight<T>(self: &OFT<T>, eid: u32, inbound: bool, clock: &Clock): u64 {
+public fun rate_limit_in_flight(self: &OFT, eid: u32, inbound: bool, clock: &Clock): u64 {
     self.assert_upgrade_version();
     if (inbound) {
         self.inbound_rate_limiter.in_flight(eid, clock)
@@ -757,7 +719,7 @@ public fun rate_limit_in_flight<T>(self: &OFT<T>, eid: u32, inbound: bool, clock
 }
 
 /// Returns the available rate limit capacity for a specific endpoint ID
-public fun rate_limit_capacity<T>(self: &OFT<T>, eid: u32, inbound: bool, clock: &Clock): u64 {
+public fun rate_limit_capacity(self: &OFT, eid: u32, inbound: bool, clock: &Clock): u64 {
     self.assert_upgrade_version();
     if (inbound) {
         self.inbound_rate_limiter.rate_limit_capacity(eid, clock)
@@ -769,15 +731,14 @@ public fun rate_limit_capacity<T>(self: &OFT<T>, eid: u32, inbound: bool, clock:
 // === Internal Functions ===
 
 /// Internal function to create OFT instances with common logic
-fun init_oft_internal<T>(
+fun init_oft_internal(
     oapp: &OApp,
     oft_cap: CallCap,
-    coin_metadata: &CoinMetadata<T>,
+    coin_metadata: &CoinMetadata<REGULATED_COIN>,
     shared_decimals: u8,
-    treasury: OFTTreasury<T>,
-    is_adapter: bool,
+    supply_manager_cap: SupplyManagerCap,
     ctx: &mut TxContext,
-): (OFT<T>, MigrationCap) {
+): (OFT, MigrationCap) {
     let local_decimals = coin_metadata.get_decimals();
     assert!(local_decimals >= shared_decimals, EInvalidLocalDecimals);
     let decimal_conversion_rate = u64::pow(10, (local_decimals - shared_decimals));
@@ -790,7 +751,7 @@ fun init_oft_internal<T>(
         admin_cap: oapp.admin_cap(),
         migration_cap: object::id_address(&migration_cap),
         oft_cap,
-        treasury,
+        supply_manager_cap,
         coin_metadata: object::id_address(coin_metadata),
         decimal_conversion_rate,
         shared_decimals,
@@ -804,20 +765,22 @@ fun init_oft_internal<T>(
         oapp_object: oft.oapp_object,
         oft_object: object::id_address(&oft),
         coin_metadata: object::id_address(coin_metadata),
-        is_adapter,
+        is_adapter: false,
     });
 
     (oft, migration_cap)
 }
 
 /// Internal implementation of cross-chain token receive logic.
-fun lz_receive_internal<T>(
-    self: &mut OFT<T>,
+fun lz_receive_internal(
+    self: &mut OFT,
     oapp: &OApp,
     call: Call<LzReceiveParam, Void>,
     clock: &Clock,
+    treasury: &mut Treasury,
+    deny_list: &DenyList,
     ctx: &mut TxContext,
-): (u32, u64, Bytes32, Coin<T>, OFTMessage) {
+): (u32, u64, Bytes32, Coin<REGULATED_COIN>, OFTMessage) {
     // SECURITY: Delegate to OApp for LayerZero message validation and peer verification
     // This ensures the message comes from a trusted source and passes all security checks
     let lz_receive_param = oapp.lz_receive(&self.oft_cap, call);
@@ -833,7 +796,7 @@ fun lz_receive_internal<T>(
     self.inbound_rate_limiter.try_consume_rate_limit_capacity(src_eid, amount_received_ld, clock);
 
     // CRITICAL: Credit tokens according to treasury model (mint or release from escrow)
-    let coin_credited = self.credit(amount_received_ld, ctx);
+    let coin_credited = self.credit(amount_received_ld,  treasury, deny_list, ctx);
 
     event::emit(OFTReceivedEvent { guid, src_eid, to_address: oft_msg.send_to(), amount_received_ld });
 
@@ -846,7 +809,7 @@ fun lz_receive_internal<T>(
 
 /// Calculates final transfer amounts without executing the debit operation.
 /// Uses destination-specific fee if configured, otherwise no fee is applied.
-fun debit_view<T>(self: &OFT<T>, dst_eid: u32, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
+fun debit_view(self: &OFT, dst_eid: u32, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
     if (self.has_oft_fee(dst_eid)) {
         debit_view_with_fee(self, dst_eid, amount_ld, min_amount_ld)
     } else {
@@ -855,7 +818,7 @@ fun debit_view<T>(self: &OFT<T>, dst_eid: u32, amount_ld: u64, min_amount_ld: u6
 }
 
 /// Calculates final transfer amounts with destination-specific fee deduction.
-fun debit_view_with_fee<T>(self: &OFT<T>, dst_eid: u32, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
+fun debit_view_with_fee(self: &OFT, dst_eid: u32, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
     let amount_ld_after_fee = self.fee.apply_fee(dst_eid, amount_ld);
     let amount_received_ld = self.remove_dust(amount_ld_after_fee);
     assert!(amount_received_ld >= min_amount_ld, ESlippageExceeded);
@@ -863,7 +826,7 @@ fun debit_view_with_fee<T>(self: &OFT<T>, dst_eid: u32, amount_ld: u64, min_amou
 }
 
 /// Calculates final transfer amounts without fee deduction.
-fun no_fee_debit_view<T>(self: &OFT<T>, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
+fun no_fee_debit_view(self: &OFT, amount_ld: u64, min_amount_ld: u64): (u64, u64) {
     let amount_sent_ld = self.remove_dust(amount_ld);
     let amount_received_ld = amount_sent_ld;
     assert!(amount_received_ld >= min_amount_ld, ESlippageExceeded);
@@ -871,12 +834,14 @@ fun no_fee_debit_view<T>(self: &OFT<T>, amount_ld: u64, min_amount_ld: u64): (u6
 }
 
 /// Executes token debit operation based on OFT model (burn vs. escrow).
-fun debit<T>(
-    self: &mut OFT<T>,
-    coin: &mut Coin<T>,
+fun debit(
+    self: &OFT,
+    coin: &mut Coin<REGULATED_COIN>,
     dst_eid: u32,
     amount_ld: u64,
     min_amount_ld: u64,
+    treasury: &mut Treasury,
+    deny_list: &DenyList,
     ctx: &mut TxContext,
 ): (u64, u64) {
     let (amount_sent_ld, amount_received_ld) = self.debit_view(dst_eid, amount_ld, min_amount_ld);
@@ -888,46 +853,25 @@ fun debit<T>(
 
     // Execute treasury-model-specific debit operation
     // SECURITY: This is the critical point where tokens leave circulation (burn) or availability (escrow)
-    match (&mut self.treasury) {
-        OFTTreasury::OFT { treasury_cap } => {
-            // Standard OFT: Burn tokens to reduce total supply across all chains
-            // This approach is suitable for tokens where the protocol controls total supply
-            treasury_cap.burn(coin_to_debit);
-        },
-        OFTTreasury::OFTAdapter { escrow } => {
-            // Adapter OFT: Escrow tokens to maintain fixed total supply
-            // Tokens remain in existence but are locked until released on message receipt
-            let escrowed_balance = coin_to_debit.into_balance();
-            escrow.join(escrowed_balance);
-        },
-    };
+    regulated_coin::burn(treasury, &self.supply_manager_cap, deny_list, coin_to_debit, ctx);
 
     (amount_sent_ld, amount_received_ld)
 }
 
 /// Executes token credit operation based on OFT model (mint vs. release from escrow).
-fun credit<T>(self: &mut OFT<T>, amount_ld: u64, ctx: &mut TxContext): Coin<T> {
+fun credit(self: &OFT,
+    amount_ld: u64,
+    treasury: &mut Treasury,
+    deny_list: &DenyList,
+    ctx: &mut TxContext): Coin<REGULATED_COIN> {
     // Execute treasury-model-specific credit operation
     // SECURITY: This is where tokens enter circulation (mint) or availability (release from escrow)
-    match (&mut self.treasury) {
-        OFTTreasury::OFT { treasury_cap } => {
-            // Standard OFT: Mint new tokens, increasing total supply
-            // Only possible if this OFT instance holds the treasury capability
-            treasury_cap.mint(amount_ld, ctx)
-        },
-        OFTTreasury::OFTAdapter { escrow } => {
-            // Adapter OFT: Release tokens from escrow balance
-            // CRITICAL: Must have sufficient escrowed tokens from previous inbound transfers
-            assert!(escrow.value() >= amount_ld, EInsufficientBalance);
-            let released_balance = escrow.split(amount_ld);
-            coin::from_balance(released_balance, ctx)
-        },
-    }
+    regulated_coin::mint_coin(treasury, &self.supply_manager_cap, deny_list, amount_ld, ctx)
 }
 
 /// Constructs the LayerZero message payload and execution options for cross-chain transmission.
-fun build_msg_and_options<T>(
-    self: &OFT<T>,
+fun build_msg_and_options(
+    self: &OFT,
     oapp: &OApp,
     sender: address,
     send_param: &SendParam,
@@ -947,51 +891,67 @@ fun build_msg_and_options<T>(
 }
 
 /// Removes precision dust by rounding down to the nearest representable amount in shared decimals.
-fun remove_dust<T>(self: &OFT<T>, amount_ld: u64): u64 {
+fun remove_dust(self: &OFT, amount_ld: u64): u64 {
     (amount_ld / self.decimal_conversion_rate) * self.decimal_conversion_rate
 }
 
 /// Converts an amount from standardized shared decimals to local chain decimal precision.
-fun to_ld<T>(self: &OFT<T>, amount_sd: u64): u64 {
+fun to_ld(self: &OFT, amount_sd: u64): u64 {
     amount_sd * self.decimal_conversion_rate
 }
 
 /// Converts an amount from local chain decimal precision to standardized shared decimals.
-fun to_sd<T>(self: &OFT<T>, amount_ld: u64): u64 {
+fun to_sd(self: &OFT, amount_ld: u64): u64 {
     amount_ld / self.decimal_conversion_rate
 }
 
 // === Assertions ===
 
-fun assert_admin<T>(self: &OFT<T>, admin: &AdminCap) {
+fun assert_admin(self: &OFT, admin: &AdminCap) {
     assert!(object::id_address(admin) == self.admin_cap, EInvalidAdminCap);
 }
 
-fun assert_upgrade_version<T>(self: &OFT<T>) {
+fun assert_upgrade_version(self: &OFT) {
     assert!(self.upgrade_version == UPGRADE_VERSION, EWrongUpgradeVersion);
 }
 
 // === Test Functions ===
 
 #[test_only]
-public(package) fun debit_for_test<T>(
-    self: &mut OFT<T>,
-    coin: &mut Coin<T>,
+public(package) fun debit_for_test(
+    self: &OFT,
+    coin: &mut Coin<REGULATED_COIN>,
     dst_eid: u32,
     amount_ld: u64,
     min_amount_ld: u64,
+    treasury: &mut Treasury,
+    deny_list: &DenyList,
     ctx: &mut TxContext,
 ): (u64, u64) {
-    self.debit(coin, dst_eid, amount_ld, min_amount_ld, ctx)
+    let (amount_sent_ld, amount_received_ld) = self.debit_view(dst_eid, amount_ld, min_amount_ld);
+    let coin_to_debit = coin.split(amount_received_ld, ctx);
+    if (amount_sent_ld > amount_received_ld) {
+        let fee_coin = coin.split(amount_sent_ld - amount_received_ld, ctx);
+        utils::transfer_coin(fee_coin, self.fee.fee_deposit_address());
+    };
+
+    regulated_coin::burn(treasury, &self.supply_manager_cap, deny_list, coin_to_debit, ctx);
+    (amount_sent_ld, amount_received_ld)
 }
 
 #[test_only]
-public(package) fun mint_for_testing<T>(self: &mut OFT<T>, amount_ld: u64, ctx: &mut TxContext): Coin<T> {
-    self.credit(amount_ld, ctx)
+public(package) fun mint_for_testing(
+    self: &OFT,
+    amount_ld: u64,
+    treasury: &mut Treasury,
+    deny_list: &DenyList,
+    ctx: &mut TxContext,
+): Coin<REGULATED_COIN> {
+    regulated_coin::mint_coin(treasury, &self.supply_manager_cap, deny_list, amount_ld, ctx)
 }
 
 #[test_only]
-public(package) fun cap_for_test<T>(self: &OFT<T>): &CallCap {
+public(package) fun cap_for_test(self: &OFT): &CallCap {
     &self.oft_cap
 }
 
@@ -1002,13 +962,13 @@ public(package) fun destruct_oft_sent_event(event: OFTSentEvent): (Bytes32, u32,
 }
 
 #[test_only]
-public(package) fun remove_dust_for_test<T>(self: &OFT<T>, amount_ld: u64): u64 {
+public(package) fun remove_dust_for_test(self: &OFT, amount_ld: u64): u64 {
     self.remove_dust(amount_ld)
 }
 
 #[test_only]
-public(package) fun register_oapp_for_test<T>(
-    self: &OFT<T>,
+public(package) fun register_oapp_for_test(
+    self: &OFT,
     endpoint: &mut EndpointV2,
     lz_receive_info: vector<u8>,
     ctx: &mut TxContext,
@@ -1017,18 +977,18 @@ public(package) fun register_oapp_for_test<T>(
 }
 
 #[test_only]
-public(package) fun to_ld_for_test<T>(self: &OFT<T>, amount_sd: u64): u64 {
+public(package) fun to_ld_for_test(self: &OFT, amount_sd: u64): u64 {
     self.to_ld(amount_sd)
 }
 
 #[test_only]
-public(package) fun to_sd_for_test<T>(self: &OFT<T>, amount_ld: u64): u64 {
+public(package) fun to_sd_for_test(self: &OFT, amount_ld: u64): u64 {
     self.to_sd(amount_ld)
 }
 
 #[test_only]
-public(package) fun debit_view_for_test<T>(
-    self: &OFT<T>,
+public(package) fun debit_view_for_test(
+    self: &OFT,
     dst_eid: u32,
     amount_ld: u64,
     min_amount_ld: u64,
@@ -1037,26 +997,25 @@ public(package) fun debit_view_for_test<T>(
 }
 
 #[test_only]
-public(package) fun init_oft_for_test<T>(
+public(package) fun init_oft_for_test(
     oapp: &OApp,
     oft_cap: CallCap,
-    treasury_cap: TreasuryCap<T>,
-    coin_metadata: &CoinMetadata<T>,
+    supply_manager_cap: SupplyManagerCap,
+    coin_metadata: &CoinMetadata<REGULATED_COIN>,
     shared_decimals: u8,
     ctx: &mut TxContext,
-): (OFT<T>, MigrationCap) {
+): (OFT, MigrationCap) {
     init_oft_internal(
         oapp,
         oft_cap,
         coin_metadata,
         shared_decimals,
-        OFTTreasury::OFT { treasury_cap },
-        false,
+        supply_manager_cap,
         ctx,
     )
 }
 
 #[test_only]
-public(package) fun share_oft_for_test<T>(oft: OFT<T>) {
+public(package) fun share_oft_for_test(oft: OFT) {
     transfer::share_object(oft);
 }

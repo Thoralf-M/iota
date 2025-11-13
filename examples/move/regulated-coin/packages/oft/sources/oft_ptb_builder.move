@@ -29,7 +29,7 @@ public struct OFTPtbBuilder {}
 ///
 /// **Returns**: Serialized execution metadata for endpoint registration
 public fun lz_receive_info<T>(
-    oft: &OFT<T>,
+    oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: &OFTComposerManager,
     clock: &Clock,
@@ -67,7 +67,7 @@ public fun lz_receive_info<T>(
 ///
 /// **Returns**: Vector of Move calls forming a complete PTB for message execution
 public fun build_lz_receive_ptb<T>(
-    oft: &OFT<T>,
+    oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: &OFTComposerManager,
     call: &Call<LzReceiveParam, Void>,
@@ -95,7 +95,7 @@ public fun build_lz_receive_ptb<T>(
 /// **Parameters**:
 /// - `builder`: PTB builder to add the call to
 /// - `oft`: Target OFT instance that will process the token transfer
-fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT<T>, clock: &Clock) {
+fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock) {
     let oapp_object = oft.oapp_object();
     builder.add(
         move_call::create(
@@ -125,7 +125,7 @@ fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT<T>, clock: 
 /// - `composer`: Target composer address that will execute the compose logic
 fun add_lz_receive_compose_call<T>(
     builder: &mut MoveCallsBuilder,
-    oft: &OFT<T>,
+    oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: address,
     composer: address,

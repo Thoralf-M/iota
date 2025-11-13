@@ -22,12 +22,14 @@ use oft::{
     oft_send_context::OFTSendContext,
     oft_sender::{Self, OFTSender},
     send_param::SendParam,
-    test_coin::{Self, TEST_COIN}
 };
 use oft_common::oft_composer_manager::{Self, OFTComposerManager};
 use iota::{coin::{Self, Coin, CoinMetadata}, iota::IOTA, test_scenario::{Self, Scenario}, test_utils};
 use utils::{buffer_reader, bytes32::{Self, Bytes32}};
 use zro::zro::ZRO;
+use regulated_coin::regulated_coin::Treasury;
+use iota::deny_list::{Self, DenyList};
+use regulated_coin::regulated_coin::{Self, REGULATED_COIN};
 
 const SHARED_DECIMALS: u8 = 6;
 
@@ -35,7 +37,11 @@ const SHARED_DECIMALS: u8 = 6;
 
 /// Setup multiple OFT instances, each corresponding to an endpoint
 public fun setup_oft(scenario: &mut Scenario, sender: address, eids: vector<u32>, deployments: &mut Deployments) {
-    // Create all OFT instances
+    // Initialize DenyList with system address (only once)
+    scenario.next_tx(@0);
+    deny_list::create_for_test(scenario.ctx());
+
+    // Create all OFT instances (each with its own REGULATED_COIN Treasury)
     create_oft_instances(scenario, sender, eids, deployments);
 
     // Configure peer connections between OFTs
@@ -45,35 +51,51 @@ public fun setup_oft(scenario: &mut Scenario, sender: address, eids: vector<u32>
 /// Create OFT instances
 fun create_oft_instances(scenario: &mut Scenario, sender: address, eids: vector<u32>, deployments: &mut Deployments) {
     eids.do!(|eid| {
+        // Initialize a new REGULATED_COIN Treasury for this OFT instance
+        scenario.next_tx(sender);
+        regulated_coin::test_init(scenario.ctx());
+        
+        // Create initial supply manager and transfer cap
+        scenario.next_tx(sender);
+        {
+            let mut treasury = scenario.take_shared<Treasury>();
+            let admin_cap = scenario.take_from_sender<regulated_coin::AdminCap>();
+            let sm_cap = regulated_coin::new_supply_manager(&mut treasury, &admin_cap, scenario.ctx());
+            transfer::public_transfer(sm_cap, sender);
+            test_scenario::return_shared(treasury);
+            scenario.return_to_sender(admin_cap);
+        };
+
         scenario.next_tx(sender);
 
         // Create OFTComposerRegistry using the test helper function
         oft_composer_manager::init_for_testing(scenario.ctx());
 
         scenario.next_tx(sender);
-        // Create test coin and share the metadata
-        let (treasury_cap, coin_metadata) = test_coin::init_for_testing(scenario.ctx());
-        transfer::public_share_object(coin_metadata);
+        let treasury = scenario.take_shared<Treasury>();
+        let admin_cap = scenario.take_from_sender<regulated_coin::AdminCap>();
+        
+        let coin_metadata = regulated_coin::borrow_metadata(&treasury);
+        // Get coin metadata address before taking treasury_cap
+        let coin_metadata_address = object::id_address(coin_metadata);
 
-        scenario.next_tx(sender);
         let mut endpoint = deployments.take_shared_object<EndpointV2>(scenario, eid);
 
         // Create OApp and CallCap for the OFT
         let oft_cap = call_cap::new_package_cap_for_test(scenario.ctx());
-        let admin_cap = oapp::create_admin_cap_for_test(scenario.ctx());
-        let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap, scenario.ctx());
+        let admin_cap_oft = oapp::create_admin_cap_for_test(scenario.ctx());
+        let oapp = oapp::create_oapp_for_test(&oft_cap, &admin_cap_oft, scenario.ctx());
 
         // Get addresses before moving the objects
-        let admin_cap_address = object::id_address(&admin_cap);
-        let coin_metadata = scenario.take_shared<CoinMetadata<TEST_COIN>>();
-        let coin_metadata_address = object::id_address(&coin_metadata);
+        let admin_cap_address = object::id_address(&admin_cap_oft);
 
-        // Create OFT
-        let (oft, migration_cap) = oft::init_oft_for_test<TEST_COIN>(
+        // Create OFT - need to get SupplyManagerCap
+        let supply_manager_cap = scenario.take_from_sender<regulated_coin::SupplyManagerCap>();
+        let (oft, migration_cap) = oft::init_oft_for_test(
             &oapp,
             oft_cap,
-            treasury_cap,
-            &coin_metadata,
+            supply_manager_cap,
+            coin_metadata,
             SHARED_DECIMALS,
             scenario.ctx(),
         );
@@ -111,19 +133,20 @@ fun create_oft_instances(scenario: &mut Scenario, sender: address, eids: vector<
         test_scenario::return_shared<OFTComposerManager>(composer_registry);
 
         deployments.set_deployment<OApp>(eid, object::id_address(&oapp));
-        deployments.set_deployment<OFT<TEST_COIN>>(eid, oft_address);
+        deployments.set_deployment<OFT>(eid, oft_address);
         deployments.set_deployment<AdminCap>(eid, admin_cap_address);
         deployments.set_deployment<MessagingChannel>(eid, messaging_channel_address);
         deployments.set_deployment<ComposeQueue>(eid, compose_queue_address);
-        deployments.set_deployment<CoinMetadata<TEST_COIN>>(eid, coin_metadata_address);
+        deployments.set_deployment<CoinMetadata<REGULATED_COIN>>(eid, coin_metadata_address);
         deployments.set_deployment<OFTComposerManager>(eid, composer_registry_address);
+        deployments.set_deployment<Treasury>(eid, object::id_address(&treasury));
 
         test_scenario::return_shared<EndpointV2>(endpoint);
-        // CoinMetadata is created as a shared object by the coin::create_currency function
-        test_scenario::return_shared<CoinMetadata<TEST_COIN>>(coin_metadata);
+        test_scenario::return_shared<Treasury>(treasury);
         oapp::share_oapp_for_test(oapp);
-        transfer::public_transfer(admin_cap, sender);
+        transfer::public_transfer(admin_cap_oft, sender);
         transfer::public_transfer(migration_cap, sender);
+        scenario.return_to_sender<regulated_coin::AdminCap>(admin_cap);
     });
 }
 
@@ -178,7 +201,7 @@ fun setup_peer_connection(
     deployments: &Deployments,
 ) {
     // Get the remote OFT to obtain its call cap address
-    let remote_oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, dst_eid);
+    let remote_oft = deployments.take_shared_object<OFT>(scenario, dst_eid);
     let endpoint = deployments.take_shared_object<EndpointV2>(scenario, src_eid);
 
     oapp.set_peer(
@@ -190,7 +213,7 @@ fun setup_peer_connection(
         scenario.ctx(),
     );
 
-    test_scenario::return_shared<OFT<TEST_COIN>>(remote_oft);
+    test_scenario::return_shared<OFT>(remote_oft);
     test_scenario::return_shared<EndpointV2>(endpoint);
 }
 
@@ -205,7 +228,7 @@ public fun quote_send(
     compose_msg: vector<u8>,
 ): MessagingFee {
     let oapp = deployments.take_shared_object<OApp>(scenario, src_eid);
-    let oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, src_eid);
+    let oft = deployments.take_shared_object<OFT>(scenario, src_eid);
     let endpoint = deployments.take_shared_object<EndpointV2>(scenario, src_eid);
     let messaging_channel = deployments.take_shared_object<MessagingChannel>(scenario, src_eid);
     let admin_cap = deployments.take_owned_object<AdminCap>(scenario, src_eid);
@@ -223,7 +246,7 @@ public fun quote_send(
     let (_, _, result) = quote_call.destroy(oft.cap_for_test());
 
     test_scenario::return_shared<OApp>(oapp);
-    test_scenario::return_shared<OFT<TEST_COIN>>(oft);
+    test_scenario::return_shared<OFT>(oft);
     test_scenario::return_shared<EndpointV2>(endpoint);
     test_scenario::return_shared<MessagingChannel>(messaging_channel);
     scenario.return_to_sender<AdminCap>(admin_cap);
@@ -248,14 +271,15 @@ public fun send(
 ): (OFTSender, Call<EndpointSendParam, MessagingReceipt>, OFTSendContext) {
     scenario.next_tx(sender);
     let mut oapp = deployments.take_shared_object<OApp>(scenario, src_eid);
-    let mut oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, src_eid);
+    let mut oft = deployments.take_shared_object<OFT>(scenario, src_eid);
     let endpoint = deployments.take_shared_object<EndpointV2>(scenario, src_eid);
     let messaging_channel = deployments.take_shared_object<MessagingChannel>(scenario, src_eid);
     let admin_cap = deployments.take_owned_object<AdminCap>(scenario, src_eid);
 
     // Mint coins for testing
-    let mut coin_provided = oft.mint_for_testing(amount_ld, scenario.ctx());
-
+    let mut treasury = deployments.take_shared_object<Treasury>(scenario, src_eid);
+    let mut deny_list = scenario.take_shared<DenyList>();
+    let mut coin_provided = oft.mint_for_testing(amount_ld,  &mut treasury, &deny_list, scenario.ctx());
     // Create send param
     let send_param = create_send_param(dst_eid, to, amount_ld, compose_msg);
 
@@ -266,6 +290,7 @@ public fun send(
     } else {
         oft_sender::tx_sender(scenario.ctx())
     };
+
     let (send_call, oft_send_context) = oft.send(
         &mut oapp,
         &oft_sender,
@@ -274,19 +299,23 @@ public fun send(
         native_fee,
         zro_fee,
         option::some(refund_address),
+        &mut treasury,
+        &mut deny_list,
         &clock,
         scenario.ctx(),
     );
 
     // Return objects - the call will be handled by the caller
     test_scenario::return_shared<OApp>(oapp);
-    test_scenario::return_shared<OFT<TEST_COIN>>(oft);
+    test_scenario::return_shared<OFT>(oft);
     test_scenario::return_shared<EndpointV2>(endpoint);
     test_scenario::return_shared<MessagingChannel>(messaging_channel);
     scenario.return_to_sender<AdminCap>(admin_cap);
     utils::transfer_coin(coin_provided, sender); // return excessive coin back to sender
     test_utils::destroy(composer_callcap);
     test_utils::destroy(clock);
+    test_scenario::return_shared(treasury);
+    test_scenario::return_shared(deny_list);
     (oft_sender, send_call, oft_send_context)
 }
 
@@ -302,7 +331,7 @@ public fun lz_receive(
 ) {
     scenario.next_tx(sender);
     let dst_oapp = deployments.take_shared_object<OApp>(scenario, dst_eid);
-    let mut dst_oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, dst_eid);
+    let mut dst_oft = deployments.take_shared_object<OFT>(scenario, dst_eid);
     let dst_endpoint = deployments.take_shared_object<EndpointV2>(scenario, dst_eid);
     let mut compose_queue = deployments.take_shared_object<ComposeQueue>(scenario, dst_eid);
     let mut messaging_channel = deployments.take_shared_object<MessagingChannel>(scenario, dst_eid);
@@ -337,6 +366,8 @@ public fun lz_receive(
     );
 
     let clock = iota::clock::create_for_testing(scenario.ctx());
+    let mut treasury = deployments.take_shared_object<Treasury>(scenario, dst_eid);
+    let mut deny_list = scenario.take_shared<DenyList>();
 
     if (with_compose) {
         let mut composer_registry = option::extract(&mut composer_registry_opt);
@@ -346,19 +377,23 @@ public fun lz_receive(
             &mut composer_registry,
             receive_call,
             &clock,
+            &mut treasury,
+            &mut deny_list,
             scenario.ctx(),
         );
         option::fill(&mut composer_registry_opt, composer_registry);
     } else {
-        dst_oft.lz_receive(&dst_oapp, receive_call, &clock, scenario.ctx());
+        dst_oft.lz_receive(&dst_oapp, receive_call, &clock, &mut treasury, &mut deny_list, scenario.ctx());
     };
 
     // Clean up resources
     test_scenario::return_shared<OApp>(dst_oapp);
-    test_scenario::return_shared<OFT<TEST_COIN>>(dst_oft);
+    test_scenario::return_shared<OFT>(dst_oft);
     test_scenario::return_shared<EndpointV2>(dst_endpoint);
     test_scenario::return_shared<ComposeQueue>(compose_queue);
     test_scenario::return_shared<MessagingChannel>(messaging_channel);
+    test_scenario::return_shared<Treasury>(treasury);
+    test_scenario::return_shared<DenyList>(deny_list);
 
     // Return composer registry if it was used
     if (option::is_some(&composer_registry_opt)) {
@@ -383,9 +418,9 @@ public fun create_inbound_packet(
     // Advance to the next transaction to ensure shared objects are available
     scenario.next_tx(sender);
     let src_endpoint = deployments.take_shared_object<EndpointV2>(scenario, src_eid);
-    let src_oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, src_eid);
+    let src_oft = deployments.take_shared_object<OFT>(scenario, src_eid);
     let dst_messaging_channel = deployments.take_shared_object<MessagingChannel>(scenario, dst_eid);
-    let dst_oft = deployments.take_shared_object<OFT<TEST_COIN>>(scenario, dst_eid);
+    let dst_oft = deployments.take_shared_object<OFT>(scenario, dst_eid);
 
     let nonce =
         endpoint_v2::get_inbound_nonce(&dst_messaging_channel, src_eid, bytes32::from_address(src_oft.oft_cap_id())) + 1;
@@ -416,10 +451,10 @@ public fun create_inbound_packet(
     );
     let encoded = packet_v1_codec::encode_packet(&packet);
 
-    test_scenario::return_shared<OFT<TEST_COIN>>(src_oft);
+    test_scenario::return_shared<OFT>(src_oft);
     test_scenario::return_shared<EndpointV2>(src_endpoint);
     test_scenario::return_shared<MessagingChannel>(dst_messaging_channel);
-    test_scenario::return_shared<OFT<TEST_COIN>>(dst_oft);
+    test_scenario::return_shared<OFT>(dst_oft);
 
     encoded
 }
@@ -433,10 +468,10 @@ fun decode_packet_for_test(encoded: vector<u8>): (PacketHeader, Bytes32, vector<
 }
 
 /// Helper function to mint test coins
-public fun mint_test_coin(amount: u64, ctx: &mut TxContext): Coin<TEST_COIN> {
+public fun mint_REGULATED_COIN(amount: u64, ctx: &mut TxContext): Coin<REGULATED_COIN> {
     // Since mint transfers to sender, we need to get the coin from balance
     // For simplicity in testing, use mint_for_testing
-    coin::mint_for_testing<TEST_COIN>(amount, ctx)
+    coin::mint_for_testing<REGULATED_COIN>(amount, ctx)
 }
 
 /// Helper function to create send param

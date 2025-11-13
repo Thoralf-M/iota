@@ -55,7 +55,7 @@ public struct DenyCapV1Key has copy, store, drop {}
 public struct SupplyManagerKey has copy, store, drop {}
 
 // Events
-public struct MintEvent has copy, drop, store { amount: u64, recipient: address }
+public struct MintEvent has copy, drop, store { amount: u64, recipient: option::Option<address> }
 public struct BurnEvent has copy, drop, store { amount: u64, actor: address }
 public struct PauseEvent has copy, drop, store { enabled: bool }
 public struct DenyListChangeEvent has copy, drop, store { address: address, added: bool }
@@ -191,7 +191,7 @@ entry fun unpause_transfers(
     };
 }
 
-/// Mint tokens using a SupplyManagerCap.
+/// Mint coins using a SupplyManagerCap.
 public fun mint(
     treasury: &mut Treasury,
     supply_manager_cap: &SupplyManagerCap,
@@ -206,24 +206,41 @@ public fun mint(
     assert!(!deny_list_v1_contains_next_epoch<REGULATED_COIN>(deny_list, ctx.sender()), EDeniedAddress);
     assert!(!deny_list_v1_contains_next_epoch<REGULATED_COIN>(deny_list, recipient), EDeniedAddress);
     borrow_treasury_cap_mut_internal(treasury).mint_and_transfer(amount, recipient, ctx);
-    event::emit(MintEvent { amount, recipient });
+    event::emit(MintEvent { amount, recipient: option::some(recipient) });
 }
 
-/// Burn tokens using a SupplyManagerCap.
+/// Mint coin using a SupplyManagerCap.
+public fun mint_coin(
+    treasury: &mut Treasury,
+    supply_manager_cap: &SupplyManagerCap,
+    deny_list: &DenyList,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<REGULATED_COIN> {
+    assert_authorized_supply_manager(treasury, supply_manager_cap);
+    assert!(amount > 0, EZeroAmount);
+    assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<REGULATED_COIN>(deny_list), EPaused);
+    assert!(!deny_list_v1_contains_next_epoch<REGULATED_COIN>(deny_list, ctx.sender()), EDeniedAddress);
+    event::emit(MintEvent { amount, recipient: option::none() });
+    borrow_treasury_cap_mut_internal(treasury).mint(amount,  ctx)
+}
+
+/// Burn coins using a SupplyManagerCap.
 public fun burn(
     treasury: &mut Treasury,
     supply_manager_cap: &SupplyManagerCap,
     deny_list: &DenyList,
     coin: Coin<REGULATED_COIN>,
     ctx: &mut TxContext,
-) {
+): u64 {
     assert_authorized_supply_manager(treasury, supply_manager_cap);
     assert!(!deny_list_v1_is_global_pause_enabled_next_epoch<REGULATED_COIN>(deny_list), EPaused);
     assert!(!deny_list_v1_contains_next_epoch<REGULATED_COIN>(deny_list, ctx.sender()), EDeniedAddress);
     let amount = coin.value();
     assert!(amount > 0, EZeroAmount);
-    borrow_treasury_cap_mut_internal(treasury).burn(coin);
+    let burned_amount = borrow_treasury_cap_mut_internal(treasury).burn(coin);
     event::emit(BurnEvent { amount, actor: ctx.sender() });
+    burned_amount
 }
 
 /// Take the CoinMetadata.
@@ -274,9 +291,15 @@ fun assert_authorized_supply_manager(treasury: &Treasury, supply_manager_cap: &S
     assert!(object::id(supply_manager_cap) == *authorized_id, ESupplyManagerNotAuthorized);
 }
 
+/// Destroy a SupplyManagerCap if it's not needed anymore to get the storage deposit back.
+public fun destroy_supply_manager_cap(supply_manager_cap: SupplyManagerCap) {
+    let SupplyManagerCap { id } = supply_manager_cap;
+    object::delete(id)
+}
+
 // Event accessors
 public fun mint_event_amount(e: &MintEvent): u64 { e.amount }
-public fun mint_event_recipient(e: &MintEvent): address { e.recipient }
+public fun mint_event_recipient(e: &MintEvent): Option<address> { e.recipient }
 public fun burn_event_amount(e: &BurnEvent): u64 { e.amount }
 public fun burn_event_actor(e: &BurnEvent): address { e.actor }
 public fun pause_event_enabled(e: &PauseEvent): bool { e.enabled }
@@ -287,4 +310,62 @@ public fun deny_list_change_event_added(e: &DenyListChangeEvent): bool { e.added
 public fun test_init(ctx: &mut TxContext) {
     let witness = REGULATED_COIN {};
     init(witness, ctx);
+}
+
+#[test_only]
+/// Get a mutable reference to the TreasuryCap for testing purposes (without AdminCap requirement)
+public fun borrow_treasury_cap_mut_for_testing(treasury: &mut Treasury): &mut TreasuryCap<REGULATED_COIN> {
+    borrow_treasury_cap_mut_internal(treasury)
+}
+
+#[test_only]
+/// Take the TreasuryCap from the Treasury for testing purposes (without AdminCap requirement)
+public fun take_treasury_cap_for_testing(treasury: &mut Treasury): TreasuryCap<REGULATED_COIN> {
+    assert!(dof::exists_with_type<_, TreasuryCap<REGULATED_COIN>>(&treasury.id, TreasuryCapKey {}), EMissingTreasuryCap);
+    dof::remove(&mut treasury.id, TreasuryCapKey {})
+}
+
+#[test_only]
+/// Put the TreasuryCap back into the Treasury for testing purposes
+public fun return_treasury_cap_for_testing(treasury: &mut Treasury, treasury_cap: TreasuryCap<REGULATED_COIN>) {
+    dof::add(&mut treasury.id, TreasuryCapKey {}, treasury_cap)
+}
+
+#[test_only]
+/// Initialize regulated coin for testing with default decimals (6)
+public fun init_for_testing(ctx: &mut TxContext): (Treasury, AdminCap) {
+    init_for_testing_with_decimals(6, ctx)
+}
+
+#[test_only]
+/// Initialize regulated coin for testing with custom decimals
+public fun init_for_testing_with_decimals(
+    decimals: u8,
+    ctx: &mut TxContext,
+): (Treasury, AdminCap) {
+    let symbol = b"REGULATED_COIN";
+    let name = b"Regulated Coin";
+    let description = b"Test Regulated Coin";
+    let icon_url = option::none();
+    let allow_global_pause = true;
+
+    let (treasury_cap, deny_cap, metadata) = coin::create_regulated_currency_v1(
+        REGULATED_COIN {},
+        decimals,
+        symbol,
+        name,
+        description,
+        icon_url,
+        allow_global_pause,
+        ctx,
+    );
+
+    // Create treasury and admin cap without sharing
+    let mut treasury = Treasury { id: object::new(ctx) };
+    let admin_cap = AdminCap { id: object::new(ctx) };
+    dof::add(&mut treasury.id, CoinMetadataKey {}, metadata);
+    dof::add(&mut treasury.id, DenyCapV1Key {}, deny_cap);
+    dof::add(&mut treasury.id, TreasuryCapKey {}, treasury_cap);
+    
+    (treasury, admin_cap)
 }

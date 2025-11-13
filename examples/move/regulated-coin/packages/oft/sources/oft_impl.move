@@ -14,7 +14,8 @@ use call::call_cap::CallCap;
 use oapp::oapp::{Self, OApp, AdminCap};
 use oft::oft;
 use oft_common::migration::MigrationCap;
-use iota::coin::{TreasuryCap, CoinMetadata};
+use iota::coin::{CoinMetadata};
+use regulated_coin::regulated_coin::{SupplyManagerCap, REGULATED_COIN};
 
 // === Errors ===
 
@@ -42,54 +43,28 @@ fun init(otw: OFT_IMPL, ctx: &mut TxContext) {
 }
 
 /// Initializes a standard OFT (Omnichain Fungible Token).
-/// A standard OFT uses a TreasuryCap to mint and burn tokens for cross-chain transfers.
+/// A standard OFT uses a SupplyManagerCap to mint and burn tokens for cross-chain transfers.
 ///
 /// **Parameters**:
 /// - `ticket`: Creation ticket obtained from package initialization
 /// - `oapp`: Associated OApp instance that can only be called by this OFT object with the hold of the oft_cap
-/// - `treasury`: Treasury capability for the token type T
+/// - `supply_manager_cap`: SupplyManagerCap for the token
 /// - `metadata`: Metadata for the coin type T
 /// - `shared_decimals`: Number of decimals to use for cross-chain operations
 ///
 /// **Returns**:
 /// - `AdminCap`: Capability for managing the OFT
 /// - `MigrationCap`: Capability for future migrations of this OFT
-public fun init_oft<T>(
+public fun init_oft(
     ticket: OFTInitTicket,
     oapp: &OApp,
-    treasury: TreasuryCap<T>,
-    metadata: &CoinMetadata<T>,
+    supply_manager_cap: SupplyManagerCap,
+    metadata: &CoinMetadata<REGULATED_COIN>,
     shared_decimals: u8,
     ctx: &mut TxContext,
 ): (AdminCap, MigrationCap) {
     let (oft_cap, admin_cap) = destroy_oft_init_ticket(ticket, oapp);
-    let migration_cap = oft::init_oft(oapp, oft_cap, treasury, metadata, shared_decimals, ctx);
-
-    (admin_cap, migration_cap)
-}
-
-/// Creates and initializes an OFT Adapter for existing tokens.
-/// An OFT Adapter wraps existing tokens using an escrow mechanism instead of minting/burning.
-/// This allows existing tokens to gain cross-chain capabilities without modifying their supply.
-///
-/// **Parameters**:
-/// - `ticket`: Creation ticket obtained from package initialization
-/// - `oapp`: Associated OApp instance that can only be called by this OFT object with the hold of the oft_cap
-/// - `metadata`: Metadata for the existing coin type T
-/// - `shared_decimals`: Number of decimals to use for cross-chain operations
-///
-/// **Returns**:
-/// - `AdminCap`: Capability for managing the OFT Adapter
-/// - `MigrationCap`: Capability for future migrations of this OFT Adapter
-public fun init_oft_adapter<T>(
-    ticket: OFTInitTicket,
-    oapp: &OApp,
-    metadata: &CoinMetadata<T>,
-    shared_decimals: u8,
-    ctx: &mut TxContext,
-): (AdminCap, MigrationCap) {
-    let (oft_cap, admin_cap) = destroy_oft_init_ticket(ticket, oapp);
-    let migration_cap = oft::init_oft_adapter(oapp, oft_cap, metadata, shared_decimals, ctx);
+    let migration_cap = oft::init_oft(oapp, oft_cap, supply_manager_cap, metadata, shared_decimals, ctx);
 
     (admin_cap, migration_cap)
 }
