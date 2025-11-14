@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # Usage:
-#   ./scripts/extract-env.sh publish_regulated_coin.json publish_supply_manager.json
-# You can pass one or both files (regulated first, optional supply manager second).
+#   ./scripts/extract-env.sh publish_regulated_coin.json [publish_supply_manager.json] [publish_oft.json]
+# You can pass one, two, or three files (regulated first, optional supply manager second, optional oft third).
 # The script prints export commands you can eval.
 # Example:
 #   ./scripts/extract-env.sh publish-outputs/publish_regulated_coin.json \
-#       publish-outputs/publish_supply_manager.json | tee extracted.vars
+#       publish-outputs/publish_supply_manager.json publish-outputs/publish_oft.json | tee extracted.vars
 #   source <(./scripts/extract-env.sh publish-outputs/publish_regulated_coin.json)
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -17,6 +17,7 @@ fi
 
 REG_FILE="${1:-}"
 SUP_FILE="${2:-}"
+OFT_FILE="${3:-}"
 
 if [[ -z "$REG_FILE" || ! -f "$REG_FILE" ]]; then
   echo "First argument must be regulated_coin publish JSON file" >&2
@@ -45,6 +46,16 @@ if [[ -n "$SUP_FILE" && -f "$SUP_FILE" ]]; then
   SUPPLY_MANAGER_OBJECT_ID=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::supply_manager::SupplyManager($)")) | .objectId' "$SUP_FILE" 2>/dev/null | head -n1 || true)
 fi
 
+# Optional oft extraction
+OFT_PACKAGE_ID=""
+OFT_INIT_TICKET_ID=""
+OFT_OAPP_ID=""
+if [[ -n "$OFT_FILE" && -f "$OFT_FILE" ]]; then
+  OFT_PACKAGE_ID=$(jq -r '.objectChanges[] | select(.type=="published" and (.modules | index("oft"))) | .packageId' "$OFT_FILE" | head -n1)
+  OFT_INIT_TICKET_ID=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::oft_impl::OFTInitTicket$")) | .objectId' "$OFT_FILE" | head -n1)
+  OFT_OAPP_ID=$(jq -r '.objectChanges[] | select((.objectType // "") | test("::oapp::OApp$")) | .objectId' "$OFT_FILE" | head -n1)
+fi
+
 cat <<EOF
 export REGULATED_COIN_ADMIN_CAP=$REGULATED_COIN_ADMIN_CAP
 export REGULATED_COIN_TREASURY=$REGULATED_COIN_TREASURY
@@ -56,6 +67,14 @@ if [[ -n "$SUPPLY_MANAGER_PACKAGE_ID" ]]; then
 export SUPPLY_MANAGER_PACKAGE_ID=$SUPPLY_MANAGER_PACKAGE_ID
 export SUPPLY_MANAGER_ADMIN_CAP=$SUPPLY_MANAGER_ADMIN_CAP
 export SUPPLY_MANAGER_OBJECT_ID=$SUPPLY_MANAGER_OBJECT_ID
+EOF
+fi
+
+if [[ -n "$OFT_PACKAGE_ID" ]]; then
+  cat <<EOF
+export OFT_PACKAGE_ID=$OFT_PACKAGE_ID
+export OFT_INIT_TICKET_ID=$OFT_INIT_TICKET_ID
+export OFT_OAPP_ID=$OFT_OAPP_ID
 EOF
 fi
 

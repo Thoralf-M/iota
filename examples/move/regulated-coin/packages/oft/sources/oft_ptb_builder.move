@@ -115,6 +115,7 @@ fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Cl
     );
 }
 
+// TODO: need to add treasury and deny list ids?
 /// Adds a compose-enabled lz_receive call to the PTB builder for complex cross-chain workflows.
 ///
 /// **Parameters**:

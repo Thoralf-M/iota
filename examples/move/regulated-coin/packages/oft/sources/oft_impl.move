@@ -14,8 +14,7 @@ use call::call_cap::CallCap;
 use oapp::oapp::{Self, OApp, AdminCap};
 use oft::oft;
 use oft_common::migration::MigrationCap;
-use iota::coin::{CoinMetadata};
-use regulated_coin::regulated_coin::{SupplyManagerCap, REGULATED_COIN};
+use regulated_coin::regulated_coin::{Self, SupplyManagerCap, Treasury};
 
 // === Errors ===
 
@@ -49,7 +48,7 @@ fun init(otw: OFT_IMPL, ctx: &mut TxContext) {
 /// - `ticket`: Creation ticket obtained from package initialization
 /// - `oapp`: Associated OApp instance that can only be called by this OFT object with the hold of the oft_cap
 /// - `supply_manager_cap`: SupplyManagerCap for the token
-/// - `metadata`: Metadata for the coin type T
+/// - `treasury`: Treasury object for the regulated coin
 /// - `shared_decimals`: Number of decimals to use for cross-chain operations
 ///
 /// **Returns**:
@@ -59,12 +58,13 @@ public fun init_oft(
     ticket: OFTInitTicket,
     oapp: &OApp,
     supply_manager_cap: SupplyManagerCap,
-    metadata: &CoinMetadata<REGULATED_COIN>,
+    treasury: &Treasury,
     shared_decimals: u8,
     ctx: &mut TxContext,
 ): (AdminCap, MigrationCap) {
     let (oft_cap, admin_cap) = destroy_oft_init_ticket(ticket, oapp);
-    let migration_cap = oft::init_oft(oapp, oft_cap, supply_manager_cap, metadata, shared_decimals, ctx);
+    let coin_metadata = regulated_coin::borrow_metadata(treasury);
+    let migration_cap = oft::init_oft(oapp, oft_cap, supply_manager_cap, coin_metadata, shared_decimals, ctx);
 
     (admin_cap, migration_cap)
 }
