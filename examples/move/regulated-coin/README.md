@@ -181,7 +181,6 @@ echo "Sending $COIN_INPUT to $RECIPIENT_ADDRESS"
 iota client transfer --object-id $COIN_INPUT --to $RECIPIENT_ADDRESS
 ```
 
-
 ### OFT Operations
 
 After publishing the `oft` package, initialize the OFT using the OFTInitTicket and the shared OApp. You need to have created a SupplyManagerCap beforehand.
@@ -195,45 +194,49 @@ iota client ptb \
 --transfer-objects "[admin_cap_migration_cap.0, admin_cap_migration_cap.1]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
 ```
-
-OFT object: https://explorer.iota.org/object/0xd44a36aa6f5eea5d610cad6e014c9deba5db1a18bf9b08935aecc501baea1706?network=testnet
+tx: https://explorer.iota.org/txblock/9yX1dPiNUQ3ZgLWpJNscrec6iDyVFQo2dnMFaCK17yc3?network=testnet
+OFT object: https://explorer.iota.org/object/0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd?network=testnet
 
 After initialization, register the OApp with the LayerZero endpoint to enable cross-chain messaging.
 
 ```shell
 export ENDPOINT_V2=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98
-export OAPP_ADMIN_CAP=0x55b47f9db475638b33ac550757ca14d4e59244bbc15c1266c7d7f3e5eb6f113b
-# TODO provide actual lz_receive_info
+export OAPP_ADMIN_CAP=0x0d0f7a60fa4c69a18cdfb3d34e8d5386c228624e0dd3c4a3d8d389e34b103e7a
+export OFT_OBJECT_ID=0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd
 iota client ptb \
 --move-call $OFT_PACKAGE_ID::oft::register_oapp @$OFT_OBJECT_ID @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 '""' \
 --dry-run # remove --dry-run for actual execution
 ```
-tx: https://explorer.iota.org/txblock/9dqLKrJasNHVJCB5NYzHDm9GqBbdpq1bSpAWSwPYnYVa?network=testnet
+tx: https://explorer.iota.org/txblock/HDsSK9xSwoKHYvWwsHa8ryqcK5EToQfhMY8jmkgH6ntb?network=testnet
 
 After registering the OApp, set the peer for the destination chain to enable messaging.
 
 ```shell
-export MESSAGING_CHANNEL_ID=0x7446c2f6685267e14b9215cb0acdc9391c7b5585466e6ed756e54fc1f19b54c0
+export MESSAGING_CHANNEL_ID=0x8d4baf8842469c38a74f410df8622d3078bc4b2cdc8148b75ddc27015fb4af63
 export OAPP_PACKAGE_ID=0x05fb5547cce6f480ea92d9b77c9ca7056080c89896ddb394f26eb6db3fa9fdb6 # OApp package ID from LayerZero testnet deployments
 export DST_EID=40423 # iotal1-testnet endpoint id, just setting destination to same chain for testing
 iota client ptb \
---move-call $UTILS_PACKAGE_ID::bytes32::from_address @$TO_ADDRESS \
+--move-call $UTILS_PACKAGE_ID::bytes32::from_address @$OFT_PACKAGE_ID \
 --assign peer_bytes32 \
 --move-call $OAPP_PACKAGE_ID::oapp::set_peer @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 @$MESSAGING_CHANNEL_ID $DST_EID peer_bytes32 \
 --dry-run
 ```
-tx: https://explorer.iota.org/txblock/FUtMGCNFoFwiXJPAs7BRhZWTv2E2Tg9V2mnxrmu67jXx?network=testnet
+tx: https://explorer.iota.org/txblock/A8NQrkguAz5Xzg8ZxpPW4Gh2CnV3c54S17UUgHBSciAx?network=testnet
 
 After setting the peer, the OFT is ready for cross-chain transfers. Note: Full LayerZero setup (endpoints, DVNs, executors) is required for actual cross-chain functionality, which is beyond the scope of this guide. Refer to the LayerZero documentation for complete setup.
 
 iotal1-testnet is 40423 https://docs.layerzero.network/v2/deployments/deployed-contracts
 
+TODO: update PTB to same as SDK example or have an SDK example only
 ```shell
-export OFT_OBJECT_ID=0xd44a36aa6f5eea5d610cad6e014c9deba5db1a18bf9b08935aecc501baea1706
-export OFT_OAPP_ID=0x558a6e246bd80f89965a7e68c92984849db1568ba4e9e1b2e70973c098b30584
+export OFT_OBJECT_ID=0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd
 export DST_EID=40423 # iotal1-testnet endpoint id
 export TO_ADDRESS=$(iota client active-address) # destination address on the dst_eid chain
-export REGULATED_COIN_TO_SEND=0x175da63567acade04d1b9b2f81e521e912239d10c2b7c13ac571399c9dc2d917
+export REGULATED_COIN_TO_SEND=$( \
+  iota client objects --json | \
+  jq -r --arg pkg "$REGULATED_COIN_PACKAGE_ID" \
+  '[.[] | select(.data.type == "0x2::coin::Coin<\($pkg)::regulated_coin::REGULATED_COIN>") | .data.objectId] | first' \
+)  # get an IOTA coin for fees
 export AMOUNT_LD=10  # amount to send in local decimals
 export MIN_AMOUNT_LD=10  # minimum amount to receive
 export NATIVE_FEE_COIN_ID=$(iota client objects --json | jq -r '[.[] | select(.data.type == "0x2::coin::Coin<0x2::iota::IOTA>") | .data.objectId] | first')  # get an IOTA coin for fees
@@ -256,16 +259,101 @@ iota client ptb \
 --move-call $OFT_PACKAGE_ID::oft::send @$OFT_OBJECT_ID @$OFT_OAPP_ID tx_sender send_param @$REGULATED_COIN_TO_SEND @$NATIVE_FEE_COIN_ID none_zro_coin none @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID @0x6 \
 --assign send_result \
 --move-call $ENDPOINT_V2_PACKAGE_ID::endpoint_v2::send @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID send_result.0 \
-# just errors with const EUnauthorized: u64 = 10;
-# --assign sml_call \
-# --move-call $SIMPLE_MESSAGE_LIB_PACKAGE_ID::simple_message_lib::send @$SML_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID send_result.0 sml_call \
-# --dry-run
+--assign sml_call \
+--move-call $SIMPLE_MESSAGE_LIB_PACKAGE_ID::simple_message_lib::send @$SML_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID send_result.0 sml_call \
 --move-call $OFT_PACKAGE_ID::oft::confirm_send @$OFT_OBJECT_ID @$OFT_OAPP_ID tx_sender send_result.0 send_result.1 \
+--assign confirm_result \
+--transfer-objects "[confirm_result.2, confirm_result.3]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
 ```
 
+Send tx with modified SDK:
+https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=https%3A%2F%2Findexer.testnet.iota.cafe
+https://testnet.layerzeroscan.com/tx/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d
 
-```shell
-export DVN=0x38eae904a49f930f7115ff1b6470715e5ba0f55cdf8d4b49a3e3793eff9d2427
+```JS
+import { OFT } from "@layerzerolabs/lz-iotal1-oft-sdk-v2";
+import { SDK, validateTransaction } from "@layerzerolabs/lz-iotal1-sdk-v2";
+import { Transaction } from "@iota/iota-sdk/transactions";
+import { IotaClient } from '@iota/iota-sdk/client';
+import { Stage } from "@layerzerolabs/lz-definitions"
+import { toBase64 } from '@iota/bcs';
+import { Options } from '@layerzerolabs/lz-v2-utilities';
+
+const iotaClient = new IotaClient({
+    url: 'https://indexer.testnet.iota.cafe',
+});
+
+// Initialize LayerZero protocol SDK
+const protocolSDK = new SDK({
+    client: iotaClient,
+    stage: Stage.TESTNET,
+});
+
+const oftPackageId = '0x3c5b5584cb852d668d1fb93d5e2393a05403794a27424c577717f44be7e41344'
+
+// Create OFT instance (with optional parameters for convenience)
+const oft = new OFT(protocolSDK, oftPackageId);
+
+const senderAddress = '0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610'
+// Prepare send parameters
+const sendParam = {
+    dstEid: 40423, // Destination endpoint ID
+    to: (() => { const arr = new Uint8Array(32); arr.set(Buffer.from(senderAddress.slice(2), 'hex')); return arr; })(), // Recipient address as Uint8Array (32 bytes)
+    amountLd: 10n, // Amount in local decimals
+    minAmountLd: 9n, // Minimum amount (slippage protection)
+    extraOptions: Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes(),// new Uint8Array(0), // LayerZero execution options
+    composeMsg: new Uint8Array(0), // Optional compose message
+    oftCmd: new Uint8Array(0), // Optional OFT command (unused in default OFT)
+};
+
+// Quote the transfer fees
+// const messagingFee = await oft.quoteSend(
+//     senderAddress,
+//     sendParam,
+//     false, // payInZro: false = pay in native token
+// );
+
+// Execute the transfer
+const tx = new Transaction();
+
+// Split coins from sender's wallet
+// const coin = await oft.splitCoinMoveCall(tx, senderAddress, sendParam.amountLd);
+const coin = await oft.splitCoinMoveCall(tx, senderAddress, BigInt(20));
+
+try {
+
+    // Send the tokens
+    await oft.sendMoveCall(
+        tx,
+        senderAddress,
+        sendParam,
+        coin,
+        // messagingFee.nativeFee,
+        // messagingFee.zroFee,
+        1000000000,
+        0,
+        senderAddress, // refund address
+    );
+
+
+    // Transfer any remaining coins back to sender
+    tx.transferObjects([coin], senderAddress);
+    tx.setSender(senderAddress);
+    tx.setGasBudget(1000000000);
+    // let bytes = await tx.build({ client: iotaClient });
+    // console.log(bytes)
+    let transactionBytes = toBase64(await tx.build({ client: iotaClient }));
+    console.log(transactionBytes)
+    let dryRun = await iotaClient.dryRunTransactionBlock({ transactionBlock: transactionBytes })
+    console.log(dryRun.effects.status)
+} catch (e) {
+    console.error(e)
+}
 ```
-0x43713bc8ac3c792aeba65d0894c20ff57f65bb81bd6522a0b167518e4fa0b2a3::package_whitelist_validator::Validator https://explorer.iota.org/object/0x1270e2859c59f141e618d4e39bd75aaba244e6da01ed4df1cfaa8b4522dd767d?network=testnet
+
+Provide bytes to sign command:
+```shell
+iota keytool sign --address 0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610 --data 
+```
+

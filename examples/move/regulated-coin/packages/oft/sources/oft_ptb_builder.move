@@ -13,6 +13,10 @@ use ptb_move_call::{argument, move_call::{Self, MoveCall}, move_calls_builder::{
 use std::type_name;
 use iota::{bcs, clock::Clock};
 use utils::{buffer_writer, package};
+use iota::{
+    deny_list::{DenyList},
+};
+use regulated_coin::regulated_coin::Treasury;
 
 /// Version identifier for lz_receive_info format - version 1 includes 2-byte version header plus serialized MoveCall
 /// vector
@@ -66,26 +70,30 @@ public fun lz_receive_info<T>(
 /// - `call`: LayerZero receive call containing the cross-chain message
 ///
 /// **Returns**: Vector of Move calls forming a complete PTB for message execution
-public fun build_lz_receive_ptb<T>(
+public fun build_lz_receive_ptb(
     oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: &OFTComposerManager,
     call: &Call<LzReceiveParam, Void>,
     clock: &Clock,
+    treasury: &mut Treasury,
+    deny_list: &mut DenyList,
 ): vector<MoveCall> {
     let mut builder = move_calls_builder::new();
     let message = oft_msg_codec::decode(*call.param().message());
     if (message.is_composed()) {
-        add_lz_receive_compose_call<T>(
+        add_lz_receive_compose_call(
             &mut builder,
             oft,
             endpoint,
             object::id_address(composer_manager),
             message.send_to(),
             clock,
+            treasury,
+            deny_list,
         );
     } else {
-        add_lz_receive_call<T>(&mut builder, oft, clock);
+        add_lz_receive_call(&mut builder, oft, clock);
     };
     builder.build()
 }
@@ -95,7 +103,7 @@ public fun build_lz_receive_ptb<T>(
 /// **Parameters**:
 /// - `builder`: PTB builder to add the call to
 /// - `oft`: Target OFT instance that will process the token transfer
-fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock) {
+fun add_lz_receive_call(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock) {
     let oapp_object = oft.oapp_object();
     builder.add(
         move_call::create(
@@ -108,14 +116,13 @@ fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Cl
                 argument::create_id(ptb_builder_helper::lz_receive_call_id()),
                 argument::create_object(object::id_address(clock)),
             ],
-            vector[type_name::get<T>()],
+            vector[],
             false,
             vector[],
         ),
     );
 }
 
-// TODO: need to add treasury and deny list ids?
 /// Adds a compose-enabled lz_receive call to the PTB builder for complex cross-chain workflows.
 ///
 /// **Parameters**:
@@ -124,13 +131,15 @@ fun add_lz_receive_call<T>(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Cl
 /// - `endpoint`: LayerZero endpoint managing compose message queuing
 /// - `composer_manager`: Address of the composer manager for token routing
 /// - `composer`: Target composer address that will execute the compose logic
-fun add_lz_receive_compose_call<T>(
+fun add_lz_receive_compose_call(
     builder: &mut MoveCallsBuilder,
     oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: address,
     composer: address,
     clock: &Clock,
+    treasury: &Treasury,
+    deny_list: &DenyList,
 ) {
     let compose_queue = endpoint.get_compose_queue(composer);
     let oapp_object = oft.oapp_object();
@@ -146,8 +155,10 @@ fun add_lz_receive_compose_call<T>(
                 argument::create_object(composer_manager),
                 argument::create_id(ptb_builder_helper::lz_receive_call_id()),
                 argument::create_object(object::id_address(clock)),
+                argument::create_object(object::id_address(treasury)),
+                argument::create_object(object::id_address(deny_list)),
             ],
-            vector[type_name::get<T>()],
+            vector[],
             false,
             vector[],
         ),
