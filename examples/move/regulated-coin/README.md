@@ -269,6 +269,7 @@ iota client ptb \
 
 Send tx with modified SDK:
 https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=https%3A%2F%2Findexer.testnet.iota.cafe
+
 https://testnet.layerzeroscan.com/tx/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d
 
 ```JS
@@ -356,4 +357,29 @@ Provide bytes to sign command:
 ```shell
 iota keytool sign --address 0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610 --data 
 ```
+
+Commit verification for ULN302 (usually not required to be done manually):
+
+Get packet header with data fetched from the transaction PacketSentEvent https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=testnet:
+First 81 bytes are the packet header
+PAYLOAD_HASH_HEX extracted from the dynamic field https://explorer.iota.org/object/0xf4a743ae7a44e3e24c8f00c6164da8a790e7723db572d9e780bbcd3e15096bd6?network=testnet that was created by the verify function called by the DVN https://explorer.iota.org/txblock/AFQXgZw6H1ww1nS2a5WrYu3ybgGbrGjzab9EXH2fQYEu?network=testnet
+
+```shell
+ULN302_PACKAGE_ID=0xf87812112d8ad8329269d7445be936057651dcf96a692f32ee1d8de82296cc7d
+VERIFICATION_OBJECT_ID=0x898a41148ba0b90e7de598d95775ec886aa961ae3ee7a35436760a1736dce085
+ULN302_OBJECT_ID=0xca3eb88711d4ab5587605439ea5b968d2ba1908b9162f34e9f116e5ec7edeb16
+ENDPOINT_V2_OBJECT_ID=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98
+MESSAGING_CHANNEL_ID=0x8d4baf8842469c38a74f410df8622d3078bc4b2cdc8148b75ddc27015fb4af63
+UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82
+PAYLOAD_HASH_HEX=0x835202f55ffba65a466707193c590f4d142e14a2959cece701344a3e2c7e177a
+iota client ptb \
+--make-move-vec "<u8>" "[1,0,0,0,0,0,0,0,1,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68]" \
+--assign packet_header \
+--move-call $UTILS_PACKAGE_ID::bytes32::from_address @$PAYLOAD_HASH_HEX \
+--assign payload_hash \
+--move-call $ULN302_PACKAGE_ID::uln_302::commit_verification @$ULN302_OBJECT_ID @$VERIFICATION_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID packet_header payload_hash @0x6 \
+--dry-run # remove --dry-run for actual execution
+```
+tx: https://explorer.iota.org/txblock/2m6iSgHmUy37xphLvxrueMjgoN6CC6K9r4mahCBxBYEH?network=testnet
+
 
