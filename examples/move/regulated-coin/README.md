@@ -186,7 +186,7 @@ iota client transfer --object-id $COIN_INPUT --to $RECIPIENT_ADDRESS
 After publishing the `oft` package, initialize the OFT using the OFTInitTicket and the shared OApp. You need to have created a SupplyManagerCap beforehand.
 
 ```shell
-# Initialize OFT, example tx 5J9i4ZNjgw1cmTDRSWQDfVtpUPZDtqU9vmGsHbRdrrRg
+# Initialize OFT, example tx A9wwu8DGMNcwa7pVvcBFFGZDa8ACEnQTWTcD3HZVN17Z
 SHARED_DECIMALS=6  # Choose appropriate shared decimals (≤ local decimals)
 iota client ptb \
 --move-call $OFT_PACKAGE_ID::oft_impl::init_oft @$OFT_INIT_TICKET_ID @$OFT_OAPP_ID @$SUPPLY_MANAGER_CAP_ID @$REGULATED_COIN_TREASURY $SHARED_DECIMALS \
@@ -194,26 +194,30 @@ iota client ptb \
 --transfer-objects "[admin_cap_migration_cap.0, admin_cap_migration_cap.1]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
 ```
-tx: https://explorer.iota.org/txblock/9yX1dPiNUQ3ZgLWpJNscrec6iDyVFQo2dnMFaCK17yc3?network=testnet
-OFT object: https://explorer.iota.org/object/0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd?network=testnet
+tx: https://explorer.iota.org/txblock/A9wwu8DGMNcwa7pVvcBFFGZDa8ACEnQTWTcD3HZVN17Z?network=testnet
+OFT object: https://explorer.iota.org/object/0xf16aaa4ed82de57efef32c7dea437bf8fbe17bb02f01cc078ffb9ce7b49ef195?network=testnet
 
 After initialization, register the OApp with the LayerZero endpoint to enable cross-chain messaging.
 
 ```shell
-export ENDPOINT_V2=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98
-export OAPP_ADMIN_CAP=0x0d0f7a60fa4c69a18cdfb3d34e8d5386c228624e0dd3c4a3d8d389e34b103e7a
-export OFT_OBJECT_ID=0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd
+export OFT_OBJECT_ID=0xf16aaa4ed82de57efef32c7dea437bf8fbe17bb02f01cc078ffb9ce7b49ef195 # replace with created object ID
+export OAPP_ADMIN_CAP=0x47bb5a5a3dcb3b787d3cc35777220cc9289463b8dc94d05ddba671e810413383 # replace with created object ID
+export ENDPOINT_V2=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98 # layerzero testnet endpoint
+export OFT_COMPOSE_MANAGER_OBJECT_ID=0x0f0b3c80ed9bfc559a4018fc37e3fefc690814fdfbb5125d7219768c7ca5a1f6 # layerzero testnet compose manager
 iota client ptb \
---move-call $OFT_PACKAGE_ID::oft::register_oapp @$OFT_OBJECT_ID @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 '""' \
+--move-call $OFT_PACKAGE_ID::oft_ptb_builder::lz_receive_info @$OFT_OBJECT_ID @$ENDPOINT_V2 @$OFT_COMPOSE_MANAGER_OBJECT_ID @0x6 \
+--assign lz_receive_info \
+--move-call $OFT_PACKAGE_ID::oft::register_oapp @$OFT_OBJECT_ID @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 lz_receive_info \
 --dry-run # remove --dry-run for actual execution
 ```
-tx: https://explorer.iota.org/txblock/HDsSK9xSwoKHYvWwsHa8ryqcK5EToQfhMY8jmkgH6ntb?network=testnet
+tx: https://explorer.iota.org/txblock/8aw4TsE7QtCAx1CJs8HeXwvRA7QGoWu4AgTKSwuHm1m4?network=testnet
 
 After registering the OApp, set the peer for the destination chain to enable messaging.
 
 ```shell
-export MESSAGING_CHANNEL_ID=0x8d4baf8842469c38a74f410df8622d3078bc4b2cdc8148b75ddc27015fb4af63
+export MESSAGING_CHANNEL_ID=0x3ed125a17d703d12c174810869f97c4548a8964d37c65a0839178b8b927a645d # get from previous tx
 export OAPP_PACKAGE_ID=0x05fb5547cce6f480ea92d9b77c9ca7056080c89896ddb394f26eb6db3fa9fdb6 # OApp package ID from LayerZero testnet deployments
+export UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82 # layerzero testnet utils package
 export DST_EID=40423 # iotal1-testnet endpoint id, just setting destination to same chain for testing
 iota client ptb \
 --move-call $UTILS_PACKAGE_ID::bytes32::from_address @$OFT_PACKAGE_ID \
@@ -221,13 +225,13 @@ iota client ptb \
 --move-call $OAPP_PACKAGE_ID::oapp::set_peer @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 @$MESSAGING_CHANNEL_ID $DST_EID peer_bytes32 \
 --dry-run
 ```
-tx: https://explorer.iota.org/txblock/A8NQrkguAz5Xzg8ZxpPW4Gh2CnV3c54S17UUgHBSciAx?network=testnet
+tx: https://explorer.iota.org/txblock/Hhepd4EzgUcTXD6sbNQZSW1N5JkRbxqnGupc2VVBtXAK?network=testnet
 
 After setting the peer, the OFT is ready for cross-chain transfers. Note: Full LayerZero setup (endpoints, DVNs, executors) is required for actual cross-chain functionality, which is beyond the scope of this guide. Refer to the LayerZero documentation for complete setup.
 
 iotal1-testnet is 40423 https://docs.layerzero.network/v2/deployments/deployed-contracts
 
-TODO: update PTB to same as SDK example or have an SDK example only
+<!-- TODO: update PTB to same as SDK example or have an SDK example only
 ```shell
 export OFT_OBJECT_ID=0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd
 export DST_EID=40423 # iotal1-testnet endpoint id
@@ -265,14 +269,14 @@ iota client ptb \
 --assign confirm_result \
 --transfer-objects "[confirm_result.2, confirm_result.3]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
-```
+``` -->
 
 Send tx with modified SDK:
-https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=https%3A%2F%2Findexer.testnet.iota.cafe
+https://explorer.iota.org/txBlock/5eCLhUBNsHta46iBhLiLLdtHwkLbivgmNuw4XrgapAhz?network=https%3A%2F%2Findexer.testnet.iota.cafe
 
-https://testnet.layerzeroscan.com/tx/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d
+https://testnet.layerzeroscan.com/tx/4fxMN9nM2ytAAWEi7JiUaSjDitVX7UNidXejt9h6MfVY
 
-```JS
+<!-- ```JS
 import { OFT } from "@layerzerolabs/lz-iotal1-oft-sdk-v2";
 import { SDK, validateTransaction } from "@layerzerolabs/lz-iotal1-sdk-v2";
 import { Transaction } from "@iota/iota-sdk/transactions";
@@ -351,7 +355,7 @@ try {
 } catch (e) {
     console.error(e)
 }
-```
+``` -->
 
 Provide bytes to sign command:
 ```shell

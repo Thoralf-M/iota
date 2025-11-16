@@ -10,7 +10,6 @@ use oapp::ptb_builder_helper;
 use oft::{oft::OFT, oft_msg_codec};
 use oft_common::oft_composer_manager::OFTComposerManager;
 use ptb_move_call::{argument, move_call::{Self, MoveCall}, move_calls_builder::{Self, MoveCallsBuilder}};
-use std::type_name;
 use iota::{bcs, clock::Clock};
 use utils::{buffer_writer, package};
 use iota::{
@@ -32,7 +31,7 @@ public struct OFTPtbBuilder {}
 /// - `composer_manager`: Manager for routing compose transfers to composers
 ///
 /// **Returns**: Serialized execution metadata for endpoint registration
-public fun lz_receive_info<T>(
+public fun lz_receive_info(
     oft: &OFT,
     endpoint: &EndpointV2,
     composer_manager: &OFTComposerManager,
@@ -50,7 +49,7 @@ public fun lz_receive_info<T>(
                 argument::create_id(ptb_builder_helper::lz_receive_call_id()),
                 argument::create_object(object::id_address(clock)),
             ],
-            vector[type_name::get<T>()],
+            vector[],
             true,
             vector[],
         ),
