@@ -270,10 +270,10 @@ export LAYERZERO_TREASURY=0x172c0be00589891ab0e788400d07a283e921f4c5be2eb576b9c9
 # Extra options for LayerZero execution (gas limit for lzReceive)
 # Format: [0,3,1,0,17,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1] represents gas=1, value=0
 # pnpm add @layerzerolabs/lz-v2-utilities
-node -e "
-import { Options } from '@layerzerolabs/lz-v2-utilities';
-console.log(Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes())
-"
+# node -e "
+# import { Options } from '@layerzerolabs/lz-v2-utilities';
+# console.log(Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes())
+# "
 
 iota client ptb \
 --split-coins @$REGULATED_COIN_TO_SEND "[10]" \
@@ -326,8 +326,8 @@ iota client ptb \
 --dry-run # remove --dry-run for actual execution
 ```
 
-Example transaction: https://explorer.iota.org/txblock/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6?network=testnet
-LayerZero scan: https://testnet.layerzeroscan.com/tx/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6
+Example transaction: https://explorer.iota.org/txblock/6486zvFXSjPFtZ18uEAei9bw7JH4uVCtjRiJGnHyHsfA?network=testnet
+LayerZero scan: https://testnet.layerzeroscan.com/tx/6486zvFXSjPFtZ18uEAei9bw7JH4uVCtjRiJGnHyHsfA
 
 ### Manual commit verification
 
