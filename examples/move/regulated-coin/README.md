@@ -186,7 +186,7 @@ iota client transfer --object-id $COIN_INPUT --to $RECIPIENT_ADDRESS
 After publishing the `oft` package, initialize the OFT using the OFTInitTicket and the shared OApp. You need to have created a SupplyManagerCap beforehand.
 
 ```shell
-# Initialize OFT, example tx A9wwu8DGMNcwa7pVvcBFFGZDa8ACEnQTWTcD3HZVN17Z
+# Initialize OFT, example tx CsjGVLUXTQcfKssbGVudKiZBrCjD1kpsyRhBAFqowQgm
 SHARED_DECIMALS=6  # Choose appropriate shared decimals (≤ local decimals)
 iota client ptb \
 --move-call $OFT_PACKAGE_ID::oft_impl::init_oft @$OFT_INIT_TICKET_ID @$OFT_OAPP_ID @$SUPPLY_MANAGER_CAP_ID @$REGULATED_COIN_TREASURY $SHARED_DECIMALS \
@@ -194,28 +194,28 @@ iota client ptb \
 --transfer-objects "[admin_cap_migration_cap.0, admin_cap_migration_cap.1]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
 ```
-tx: https://explorer.iota.org/txblock/A9wwu8DGMNcwa7pVvcBFFGZDa8ACEnQTWTcD3HZVN17Z?network=testnet
-OFT object: https://explorer.iota.org/object/0xf16aaa4ed82de57efef32c7dea437bf8fbe17bb02f01cc078ffb9ce7b49ef195?network=testnet
+tx: https://explorer.iota.org/txblock/CsjGVLUXTQcfKssbGVudKiZBrCjD1kpsyRhBAFqowQgm?network=testnet
+OFT object: https://explorer.iota.org/object/0x1def6c8815e500c6b7e846179cb48baf33b053b56e5e66543a30272b1236f9e1?network=testnet
 
 After initialization, register the OApp with the LayerZero endpoint to enable cross-chain messaging.
 
 ```shell
-export OFT_OBJECT_ID=0xf16aaa4ed82de57efef32c7dea437bf8fbe17bb02f01cc078ffb9ce7b49ef195 # replace with created object ID
-export OAPP_ADMIN_CAP=0x47bb5a5a3dcb3b787d3cc35777220cc9289463b8dc94d05ddba671e810413383 # replace with created object ID
+export OFT_OBJECT_ID=0x1def6c8815e500c6b7e846179cb48baf33b053b56e5e66543a30272b1236f9e1 # replace with created object ID
+export OAPP_ADMIN_CAP=0x44244683bafcc1b53eb71d6cb7ad08d0619686446ecb4b601ab8e7efa98e49bf # replace with created object ID
 export ENDPOINT_V2=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98 # layerzero testnet endpoint
 export OFT_COMPOSE_MANAGER_OBJECT_ID=0x0f0b3c80ed9bfc559a4018fc37e3fefc690814fdfbb5125d7219768c7ca5a1f6 # layerzero testnet compose manager
 iota client ptb \
---move-call $OFT_PACKAGE_ID::oft_ptb_builder::lz_receive_info @$OFT_OBJECT_ID @$ENDPOINT_V2 @$OFT_COMPOSE_MANAGER_OBJECT_ID @0x6 \
+--move-call $OFT_PACKAGE_ID::oft_ptb_builder::lz_receive_info @$OFT_OBJECT_ID @$ENDPOINT_V2 @$OFT_COMPOSE_MANAGER_OBJECT_ID @0x6 @$REGULATED_COIN_TREASURY @0x403 \
 --assign lz_receive_info \
 --move-call $OFT_PACKAGE_ID::oft::register_oapp @$OFT_OBJECT_ID @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 lz_receive_info \
 --dry-run # remove --dry-run for actual execution
 ```
-tx: https://explorer.iota.org/txblock/8aw4TsE7QtCAx1CJs8HeXwvRA7QGoWu4AgTKSwuHm1m4?network=testnet
+tx: https://explorer.iota.org/txblock/31FYzeLxKvy8C7YfBBbXqKUgAZotgp65bMQA9Yfts4KF?network=testnet
 
 After registering the OApp, set the peer for the destination chain to enable messaging.
 
 ```shell
-export MESSAGING_CHANNEL_ID=0x3ed125a17d703d12c174810869f97c4548a8964d37c65a0839178b8b927a645d # get from previous tx
+export MESSAGING_CHANNEL_ID=0xe015e1346f7a20115cd2cff453406d0db2fe64fc209dc74b3df31a9fad3c4069 # get from previous tx
 export OAPP_PACKAGE_ID=0x05fb5547cce6f480ea92d9b77c9ca7056080c89896ddb394f26eb6db3fa9fdb6 # OApp package ID from LayerZero testnet deployments
 export UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82 # layerzero testnet utils package
 export DST_EID=40423 # iotal1-testnet endpoint id, just setting destination to same chain for testing
@@ -225,7 +225,7 @@ iota client ptb \
 --move-call $OAPP_PACKAGE_ID::oapp::set_peer @$OFT_OAPP_ID @$OAPP_ADMIN_CAP @$ENDPOINT_V2 @$MESSAGING_CHANNEL_ID $DST_EID peer_bytes32 \
 --dry-run
 ```
-tx: https://explorer.iota.org/txblock/Hhepd4EzgUcTXD6sbNQZSW1N5JkRbxqnGupc2VVBtXAK?network=testnet
+tx: https://explorer.iota.org/txblock/8AHGNBbxkyLFnQL9PN9sN2hJtAxT4m61RAZ3iNG1zxj?network=testnet
 
 After setting the peer, the OFT is ready for cross-chain transfers. Note: Full LayerZero setup (endpoints, DVNs, executors) is required for actual cross-chain functionality, which is beyond the scope of this guide. Refer to the LayerZero documentation for complete setup.
 
@@ -271,97 +271,21 @@ iota client ptb \
 --dry-run # remove --dry-run for actual execution
 ``` -->
 
-Send tx with modified SDK:
-https://explorer.iota.org/txBlock/5eCLhUBNsHta46iBhLiLLdtHwkLbivgmNuw4XrgapAhz?network=https%3A%2F%2Findexer.testnet.iota.cafe
-
-https://testnet.layerzeroscan.com/tx/4fxMN9nM2ytAAWEi7JiUaSjDitVX7UNidXejt9h6MfVY
-
-<!-- ```JS
-import { OFT } from "@layerzerolabs/lz-iotal1-oft-sdk-v2";
-import { SDK, validateTransaction } from "@layerzerolabs/lz-iotal1-sdk-v2";
-import { Transaction } from "@iota/iota-sdk/transactions";
-import { IotaClient } from '@iota/iota-sdk/client';
-import { Stage } from "@layerzerolabs/lz-definitions"
-import { toBase64 } from '@iota/bcs';
-import { Options } from '@layerzerolabs/lz-v2-utilities';
-
-const iotaClient = new IotaClient({
-    url: 'https://indexer.testnet.iota.cafe',
-});
-
-// Initialize LayerZero protocol SDK
-const protocolSDK = new SDK({
-    client: iotaClient,
-    stage: Stage.TESTNET,
-});
-
-const oftPackageId = '0x3c5b5584cb852d668d1fb93d5e2393a05403794a27424c577717f44be7e41344'
-
-// Create OFT instance (with optional parameters for convenience)
-const oft = new OFT(protocolSDK, oftPackageId);
-
-const senderAddress = '0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610'
-// Prepare send parameters
-const sendParam = {
-    dstEid: 40423, // Destination endpoint ID
-    to: (() => { const arr = new Uint8Array(32); arr.set(Buffer.from(senderAddress.slice(2), 'hex')); return arr; })(), // Recipient address as Uint8Array (32 bytes)
-    amountLd: 10n, // Amount in local decimals
-    minAmountLd: 9n, // Minimum amount (slippage protection)
-    extraOptions: Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes(),// new Uint8Array(0), // LayerZero execution options
-    composeMsg: new Uint8Array(0), // Optional compose message
-    oftCmd: new Uint8Array(0), // Optional OFT command (unused in default OFT)
-};
-
-// Quote the transfer fees
-// const messagingFee = await oft.quoteSend(
-//     senderAddress,
-//     sendParam,
-//     false, // payInZro: false = pay in native token
-// );
-
-// Execute the transfer
-const tx = new Transaction();
-
-// Split coins from sender's wallet
-// const coin = await oft.splitCoinMoveCall(tx, senderAddress, sendParam.amountLd);
-const coin = await oft.splitCoinMoveCall(tx, senderAddress, BigInt(20));
-
-try {
-
-    // Send the tokens
-    await oft.sendMoveCall(
-        tx,
-        senderAddress,
-        sendParam,
-        coin,
-        // messagingFee.nativeFee,
-        // messagingFee.zroFee,
-        1000000000,
-        0,
-        senderAddress, // refund address
-    );
-
-
-    // Transfer any remaining coins back to sender
-    tx.transferObjects([coin], senderAddress);
-    tx.setSender(senderAddress);
-    tx.setGasBudget(1000000000);
-    // let bytes = await tx.build({ client: iotaClient });
-    // console.log(bytes)
-    let transactionBytes = toBase64(await tx.build({ client: iotaClient }));
-    console.log(transactionBytes)
-    let dryRun = await iotaClient.dryRunTransactionBlock({ transactionBlock: transactionBytes })
-    console.log(dryRun.effects.status)
-} catch (e) {
-    console.error(e)
-}
-``` -->
+### Quote and Send Tokens across chains
+Send tx with modified SDK (node scripts/send.js):
 
 Provide bytes to sign command:
 ```shell
 iota keytool sign --address 0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610 --data 
 ```
 
+https://explorer.iota.org/txBlock/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6?network=https%3A%2F%2Findexer.testnet.iota.cafe
+
+https://testnet.layerzeroscan.com/tx/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6
+
+
+
+### Manual commit verification
 Commit verification for ULN302 (usually not required to be done manually):
 
 Get packet header with data fetched from the transaction PacketSentEvent https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=testnet:

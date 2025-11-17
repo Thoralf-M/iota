@@ -36,6 +36,8 @@ public fun lz_receive_info(
     endpoint: &EndpointV2,
     composer_manager: &OFTComposerManager,
     clock: &Clock,
+    treasury: &mut Treasury,
+    deny_list: &mut DenyList,
 ): vector<u8> {
     let lz_receive_move_calls = vector[
         move_call::create(
@@ -48,6 +50,8 @@ public fun lz_receive_info(
                 argument::create_object(object::id_address(composer_manager)),
                 argument::create_id(ptb_builder_helper::lz_receive_call_id()),
                 argument::create_object(object::id_address(clock)),
+                argument::create_object(object::id_address(treasury)),
+                argument::create_object(object::id_address(deny_list)),
             ],
             vector[],
             true,
@@ -92,7 +96,7 @@ public fun build_lz_receive_ptb(
             deny_list,
         );
     } else {
-        add_lz_receive_call(&mut builder, oft, clock);
+        add_lz_receive_call(&mut builder, oft, clock, treasury, deny_list);
     };
     builder.build()
 }
@@ -102,7 +106,7 @@ public fun build_lz_receive_ptb(
 /// **Parameters**:
 /// - `builder`: PTB builder to add the call to
 /// - `oft`: Target OFT instance that will process the token transfer
-fun add_lz_receive_call(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock) {
+fun add_lz_receive_call(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock, treasury: &Treasury, deny_list: &DenyList) {
     let oapp_object = oft.oapp_object();
     builder.add(
         move_call::create(
@@ -114,6 +118,8 @@ fun add_lz_receive_call(builder: &mut MoveCallsBuilder, oft: &OFT, clock: &Clock
                 argument::create_object(oapp_object),
                 argument::create_id(ptb_builder_helper::lz_receive_call_id()),
                 argument::create_object(object::id_address(clock)),
+                argument::create_object(object::id_address(treasury)),
+                argument::create_object(object::id_address(deny_list)),
             ],
             vector[],
             false,

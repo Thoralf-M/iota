@@ -1,0 +1,23 @@
+{
+  "name": "scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@iota/bcs": "^1.3.0",
+    "@iota/iota-sdk": "^1.7.1",
+    "@layerzerolabs/lz-definitions": "^3.0.146",
+    "@layerzerolabs/lz-iotal1-oft-sdk-v2": "^3.0.146",
+    "@layerzerolabs/lz-iotal1-sdk-v2": "^3.0.146",
+    "@layerzerolabs/lz-v2-utilities": "^3.0.146",
+    "client": "link:@iota/iota-sdk/client",
+    "transactions": "link:@iota/iota-sdk/transactions"
+  }
+}
