@@ -231,59 +231,128 @@ After setting the peer, the OFT is ready for cross-chain transfers. Note: Full L
 
 iotal1-testnet is 40423 https://docs.layerzero.network/v2/deployments/deployed-contracts
 
-<!-- TODO: update PTB to same as SDK example or have an SDK example only
+### Send Tokens across chains using PTB
+
 ```shell
-export OFT_OBJECT_ID=0xf060b3831835ce348aedb7edb5245a7ab2b7bf0f0af187a3e2a996994225fedd
+export OFT_OBJECT_ID=0x1def6c8815e500c6b7e846179cb48baf33b053b56e5e66543a30272b1236f9e1 # get from previous txs
+export OFT_OAPP_ID=0x5601995b1c80f87c61c2932e15e0b60ec0362b8243ad12cc5bcb110c8b2215f0 # get from previous txs
+export MESSAGING_CHANNEL_ID=0xe015e1346f7a20115cd2cff453406d0db2fe64fc209dc74b3df31a9fad3c4069 # get from previous txs
 export DST_EID=40423 # iotal1-testnet endpoint id
 export TO_ADDRESS=$(iota client active-address) # destination address on the dst_eid chain
+export REFUND_ADDRESS=$(iota client active-address) # refund address on source chain
 export REGULATED_COIN_TO_SEND=$( \
   iota client objects --json | \
   jq -r --arg pkg "$REGULATED_COIN_PACKAGE_ID" \
   '[.[] | select(.data.type == "0x2::coin::Coin<\($pkg)::regulated_coin::REGULATED_COIN>") | .data.objectId] | first' \
-)  # get an IOTA coin for fees
+)
+export AMOUNT_TO_SPLIT=10  # amount to split from the coin (must be >= AMOUNT_LD)
 export AMOUNT_LD=10  # amount to send in local decimals
-export MIN_AMOUNT_LD=10  # minimum amount to receive
-export NATIVE_FEE_COIN_ID=$(iota client objects --json | jq -r '[.[] | select(.data.type == "0x2::coin::Coin<0x2::iota::IOTA>") | .data.objectId] | first')  # get an IOTA coin for fees
-export ENDPOINT_PACKAGE_ID=0xfca1ac6ffcae8ce9d937e94f30c930f9ce295b29496ed975d272efec511e2495 # LayerZero endpoint package ID on testnet
-export UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82 # LayerZero utils package ID on testnet
-export ZRO_COIN_PACKAGE_ID=0x50e04dda960d432cc5f98f5c51ec65e73d313f0e6c1ad13146215946524a56f3
-export ENDPOINT_V2_OBJECT_ID=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98
-export ENDPOINT_V2_PACKAGE_ID=0xfca1ac6ffcae8ce9d937e94f30c930f9ce295b29496ed975d272efec511e2495
-export SIMPLE_MESSAGE_LIB_PACKAGE_ID=0x1ac164f11ef54614d01b8f41fa5bfbf61654216cd8b323a00991cd63879afbb5
-export SML_OBJECT_ID=0xa48db6ccef9ebce87df4871f9a0490e1e0004425b04ef82e380de16d77bbd68c
+export MIN_AMOUNT_LD=9  # minimum amount to receive (slippage protection)
+export NATIVE_FEE=1000000000  # native fee amount (1 IOTA)
+export UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82 # layerzero testnet
+export ZRO_COIN_PACKAGE_ID=0x50e04dda960d432cc5f98f5c51ec65e73d313f0e6c1ad13146215946524a56f3 # layerzero testnet
+export ENDPOINT_V2_PACKAGE_ID=0xfca1ac6ffcae8ce9d937e94f30c930f9ce295b29496ed975d272efec511e2495 # layerzero testnet
+export ENDPOINT_V2_OBJECT_ID=0x63c99ce9839a3259f2299666157f639882e4911250ee3016d190fa6944561f98 # layerzero testnet
+export ULN302_PACKAGE_ID=0xf87812112d8ad8329269d7445be936057651dcf96a692f32ee1d8de82296cc7d # layerzero testnet
+export ULN302_OBJECT_ID=0xca3eb88711d4ab5587605439ea5b968d2ba1908b9162f34e9f116e5ec7edeb16 # layerzero testnet
+export EXECUTOR_WORKER_PACKAGE_ID=0xab64bfcce4c5c357019e3b215f2502b6c7e60b6879ff5718240c7c157885708f # layerzero testnet
+export EXECUTOR_WORKER_OBJECT_ID=0xa2eb5f1df687dc901dbcc1bf174a105fac158d1fac633cd109e800c0923d8a55 # layerzero testnet
+export EXECUTOR_FEE_LIB_PACKAGE_ID=0xda132e9bedd921ce3b2f3efeab87f3a348671c2b9994347166dc522a078b8507 # layerzero testnet
+export EXECUTOR_FEE_LIB_OBJECT_ID=0x4164680bd255efae23fd420687e162ec50523f0bd55d0d87de33bd96c59a6396 # layerzero testnet
+export PRICE_FEED_PACKAGE_ID=0xe23152186cc998c2a1c8f2ed07d6607a69efd8b0ab4594789dd99fd49761f7f7 # layerzero testnet
+export PRICE_FEED_OBJECT_ID=0xfbb2014cd2babdc54d33c5980d13de169a55722f9ad686180438a6cd7b536928 # layerzero testnet
+export DVN_PACKAGE_ID=0xcf9c9179230ef3dfde78f8ad3749060b530c8b5ca53fde8af9c1f016276583f6 # layerzero testnet
+export DVN_OBJECT_ID=0x38eae904a49f930f7115ff1b6470715e5ba0f55cdf8d4b49a3e3793eff9d2427 # layerzero testnet
+export DVN_FEE_LIB_PACKAGE_ID=0x3c585acf9b51d0ad7cca084a11bb9a27b0d283075f0bbaccc04abc442201108d # layerzero testnet
+export DVN_FEE_LIB_OBJECT_ID=0xea02e95cef21b9e511ab4ceb79831ec6be44a67300e2d52c559b6a346ac37d5c # layerzero testnet
+export PRICE_FEED_SHARED_OBJECT_ID=0xfbb2014cd2babdc54d33c5980d13de169a55722f9ad686180438a6cd7b536928 # layerzero testnet
+export LAYERZERO_TREASURY=0x172c0be00589891ab0e788400d07a283e921f4c5be2eb576b9c9028667f429db # layerzero testnet
+# Extra options for LayerZero execution (gas limit for lzReceive)
+# Format: [0,3,1,0,17,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1] represents gas=1, value=0
+# import { Options } from '@layerzerolabs/lz-v2-utilities';
+# console.log(Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes())
+
 iota client ptb \
---move-call $UTILS_PACKAGE_ID::bytes32::from_address @$TO_ADDRESS \
+--split-coins @$REGULATED_COIN_TO_SEND "[10]" \
+--assign split_coin \
+--make-move-vec "<u8>" "[161,169,125,32,187,173,121,226,172,137,242,21,163,179,196,242,255,154,26,163,204,38,229,41,189,230,231,188,85,0,214,16]" \
+--assign to_address_bytes \
+--move-call $UTILS_PACKAGE_ID::bytes32::from_bytes to_address_bytes \
 --assign to_bytes32 \
---move-call $OFT_PACKAGE_ID::send_param::create $DST_EID to_bytes32 $AMOUNT_LD $MIN_AMOUNT_LD '""' '""' '""' \
+--make-move-vec "<u8>" "[0, 3, 1, 0, 17, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]" \
+--assign extra_options_vec \
+--move-call $OFT_PACKAGE_ID::send_param::create $DST_EID to_bytes32 $AMOUNT_LD $MIN_AMOUNT_LD extra_options_vec '""' '""' \
 --assign send_param \
 --move-call $OFT_PACKAGE_ID::oft_sender::tx_sender \
 --assign tx_sender \
+--split-coins gas "[$NATIVE_FEE]" \
+--assign native_fee_coin \
 --move-call std::option::none "<0x2::coin::Coin<$ZRO_COIN_PACKAGE_ID::zro::ZRO>>" \
 --assign none_zro_coin \
---move-call $OFT_PACKAGE_ID::oft::send @$OFT_OBJECT_ID @$OFT_OAPP_ID tx_sender send_param @$REGULATED_COIN_TO_SEND @$NATIVE_FEE_COIN_ID none_zro_coin none @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID @0x6 \
+--assign refund_addresses  "some(@$REFUND_ADDRESS)" \
+--move-call $OFT_PACKAGE_ID::oft::send @$OFT_OBJECT_ID @$OFT_OAPP_ID tx_sender send_param split_coin.0 native_fee_coin.0 none_zro_coin refund_addresses @$REGULATED_COIN_TREASURY @$DENY_LIST_OBJECT_ID @0x6 \
 --assign send_result \
 --move-call $ENDPOINT_V2_PACKAGE_ID::endpoint_v2::send @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID send_result.0 \
---assign sml_call \
---move-call $SIMPLE_MESSAGE_LIB_PACKAGE_ID::simple_message_lib::send @$SML_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID send_result.0 sml_call \
+--assign endpoint_send_result \
+--move-call $ULN302_PACKAGE_ID::uln_302::send @$ULN302_OBJECT_ID endpoint_send_result.0 \
+--assign uln_send_result \
+--move-call $EXECUTOR_WORKER_PACKAGE_ID::executor_worker::assign_job @$EXECUTOR_WORKER_OBJECT_ID uln_send_result.0 \
+--assign executor_assign_result \
+--move-call $EXECUTOR_FEE_LIB_PACKAGE_ID::executor_fee_lib::get_fee @$EXECUTOR_FEE_LIB_OBJECT_ID executor_assign_result.0 \
+--assign executor_get_fee_result \
+--move-call $PRICE_FEED_PACKAGE_ID::price_feed::estimate_fee_by_eid @$PRICE_FEED_OBJECT_ID executor_get_fee_result.0 \
+--assign executor_estimate_fee_result \
+--move-call $EXECUTOR_FEE_LIB_PACKAGE_ID::executor_fee_lib::confirm_get_fee @$EXECUTOR_FEE_LIB_OBJECT_ID executor_assign_result.0 executor_get_fee_result.0 \
+--assign executor_confirm_fee_result \
+--move-call $EXECUTOR_WORKER_PACKAGE_ID::executor_worker::confirm_assign_job @$EXECUTOR_WORKER_OBJECT_ID uln_send_result.0 executor_assign_result.0 \
+--assign executor_confirm_assign_result \
+--move-call $DVN_PACKAGE_ID::dvn::assign_job @$DVN_OBJECT_ID uln_send_result.1 \
+--assign dvn_assign_result \
+--move-call $DVN_FEE_LIB_PACKAGE_ID::dvn_fee_lib::get_fee @$DVN_FEE_LIB_OBJECT_ID dvn_assign_result.0 \
+--assign dvn_get_fee_result \
+--move-call $PRICE_FEED_PACKAGE_ID::price_feed::estimate_fee_by_eid @$PRICE_FEED_SHARED_OBJECT_ID dvn_get_fee_result.0 \
+--move-call $DVN_FEE_LIB_PACKAGE_ID::dvn_fee_lib::confirm_get_fee @$DVN_FEE_LIB_OBJECT_ID dvn_assign_result.0 dvn_get_fee_result.0 \
+--assign dvn_confirm_fee_result \
+--move-call $DVN_PACKAGE_ID::dvn::confirm_assign_job @$DVN_OBJECT_ID uln_send_result.1 dvn_assign_result.0 \
+--assign dvn_confirm_assign_result \
+--move-call $ULN302_PACKAGE_ID::uln_302::confirm_send @$ULN302_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$LAYERZERO_TREASURY @$MESSAGING_CHANNEL_ID send_result.0 endpoint_send_result.0 uln_send_result.0 uln_send_result.1 \
+--assign uln_confirm_result \
 --move-call $OFT_PACKAGE_ID::oft::confirm_send @$OFT_OBJECT_ID @$OFT_OAPP_ID tx_sender send_result.0 send_result.1 \
 --assign confirm_result \
---transfer-objects "[confirm_result.2, confirm_result.3]" @$(iota client active-address) \
+--move-call std::option::destroy_none "<0x2::coin::Coin<0x2::iota::IOTA>>" confirm_result.2 \
+--move-call std::option::destroy_none "<0x2::coin::Coin<$ZRO_COIN_PACKAGE_ID::zro::ZRO>>" confirm_result.3 \
+--transfer-objects "[split_coin.0]" @$(iota client active-address) \
 --dry-run # remove --dry-run for actual execution
-``` -->
-
-### Quote and Send Tokens across chains
-Send tx with modified SDK (node scripts/send.js):
-
-Provide bytes to sign command:
-```shell
-iota keytool sign --address 0xa1a97d20bbad79e2ac89f215a3b3c4f2ff9a1aa3cc26e529bde6e7bc5500d610 --data 
 ```
 
-https://explorer.iota.org/txBlock/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6?network=https%3A%2F%2Findexer.testnet.iota.cafe
+**Note:** The above command performs a simplified send without interacting with the message library (DVN/Executor). For full cross-chain functionality with proper fee calculation and message verification, the SDK's `populateSendTransaction` method handles additional calls to ULN302, DVN, and Executor contracts. See the next section for the complete SDK-based implementation.
 
-https://testnet.layerzeroscan.com/tx/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6
+### Send Tokens using SDK (Recommended)
 
+For production use, the SDK automatically handles all the required LayerZero protocol interactions including:
+- Fee quoting and calculation
+- ULN302 message library calls
+- DVN (Decentralized Verifier Network) job assignment
+- Executor job assignment and fee calculation
+- Proper transaction validation and simulation
 
+Run the SDK-based send script:
+```shell
+node scripts/send.js
+```
+
+The script performs the complete flow:
+1. Split coins from the sender's wallet
+2. Create send parameters with proper options (gas limit for lzReceive)
+3. Call `oft::send` with the regulated coin, fees, and parameters
+4. Call `endpoint_v2::send` to initiate cross-chain messaging
+5. Interact with ULN302 to handle message verification
+6. Assign jobs to DVN and Executor with fee calculation
+7. Confirm the send operation and clean up option types
+8. Transfer remaining coins back to sender
+
+Example transaction: https://explorer.iota.org/txblock/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6?network=testnet
+LayerZero scan: https://testnet.layerzeroscan.com/tx/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6
 
 ### Manual commit verification
 Commit verification for ULN302 (usually not required to be done manually):
