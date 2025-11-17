@@ -269,18 +269,19 @@ export PRICE_FEED_SHARED_OBJECT_ID=0xfbb2014cd2babdc54d33c5980d13de169a55722f9ad
 export LAYERZERO_TREASURY=0x172c0be00589891ab0e788400d07a283e921f4c5be2eb576b9c9028667f429db # layerzero testnet
 # Extra options for LayerZero execution (gas limit for lzReceive)
 # Format: [0,3,1,0,17,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1] represents gas=1, value=0
-# import { Options } from '@layerzerolabs/lz-v2-utilities';
-# console.log(Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes())
+# pnpm add @layerzerolabs/lz-v2-utilities
+node -e "
+import { Options } from '@layerzerolabs/lz-v2-utilities';
+console.log(Options.newOptions().addExecutorLzReceiveOption(1, 0).toBytes())
+"
 
 iota client ptb \
 --split-coins @$REGULATED_COIN_TO_SEND "[10]" \
 --assign split_coin \
---make-move-vec "<u8>" "[161,169,125,32,187,173,121,226,172,137,242,21,163,179,196,242,255,154,26,163,204,38,229,41,189,230,231,188,85,0,214,16]" \
---assign to_address_bytes \
+--assign to_address_bytes vector"[161,169,125,32,187,173,121,226,172,137,242,21,163,179,196,242,255,154,26,163,204,38,229,41,189,230,231,188,85,0,214,16]" \
 --move-call $UTILS_PACKAGE_ID::bytes32::from_bytes to_address_bytes \
 --assign to_bytes32 \
---make-move-vec "<u8>" "[0, 3, 1, 0, 17, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]" \
---assign extra_options_vec \
+--assign extra_options_vec vector"[0, 3, 1, 0, 17, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]" \
 --move-call $OFT_PACKAGE_ID::send_param::create $DST_EID to_bytes32 $AMOUNT_LD $MIN_AMOUNT_LD extra_options_vec '""' '""' \
 --assign send_param \
 --move-call $OFT_PACKAGE_ID::oft_sender::tx_sender \
@@ -325,36 +326,11 @@ iota client ptb \
 --dry-run # remove --dry-run for actual execution
 ```
 
-**Note:** The above command performs a simplified send without interacting with the message library (DVN/Executor). For full cross-chain functionality with proper fee calculation and message verification, the SDK's `populateSendTransaction` method handles additional calls to ULN302, DVN, and Executor contracts. See the next section for the complete SDK-based implementation.
-
-### Send Tokens using SDK (Recommended)
-
-For production use, the SDK automatically handles all the required LayerZero protocol interactions including:
-- Fee quoting and calculation
-- ULN302 message library calls
-- DVN (Decentralized Verifier Network) job assignment
-- Executor job assignment and fee calculation
-- Proper transaction validation and simulation
-
-Run the SDK-based send script:
-```shell
-node scripts/send.js
-```
-
-The script performs the complete flow:
-1. Split coins from the sender's wallet
-2. Create send parameters with proper options (gas limit for lzReceive)
-3. Call `oft::send` with the regulated coin, fees, and parameters
-4. Call `endpoint_v2::send` to initiate cross-chain messaging
-5. Interact with ULN302 to handle message verification
-6. Assign jobs to DVN and Executor with fee calculation
-7. Confirm the send operation and clean up option types
-8. Transfer remaining coins back to sender
-
 Example transaction: https://explorer.iota.org/txblock/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6?network=testnet
 LayerZero scan: https://testnet.layerzeroscan.com/tx/2dmcc3dqxsVvM6MuJc6fM4qJhAGvogUttDcbXeEAzeR6
 
 ### Manual commit verification
+
 Commit verification for ULN302 (usually not required to be done manually):
 
 Get packet header with data fetched from the transaction PacketSentEvent https://explorer.iota.org/txblock/C75tiQrUahK34q7u8tNJhK3sHj3awudL436B1rYtHK2d?network=testnet:
@@ -370,8 +346,7 @@ MESSAGING_CHANNEL_ID=0x8d4baf8842469c38a74f410df8622d3078bc4b2cdc8148b75ddc27015
 UTILS_PACKAGE_ID=0x379b562468eed5cf259a2f279527f92d231e52bb260c5169230b0a87f6a52c82
 PAYLOAD_HASH_HEX=0x835202f55ffba65a466707193c590f4d142e14a2959cece701344a3e2c7e177a
 iota client ptb \
---make-move-vec "<u8>" "[1,0,0,0,0,0,0,0,1,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68]" \
---assign packet_header \
+--assign packet_header vector"[1,0,0,0,0,0,0,0,1,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68,0,0,157,231,60,91,85,132,203,133,45,102,141,31,185,61,94,35,147,160,84,3,121,74,39,66,76,87,119,23,244,75,231,228,19,68]" \
 --move-call $UTILS_PACKAGE_ID::bytes32::from_address @$PAYLOAD_HASH_HEX \
 --assign payload_hash \
 --move-call $ULN302_PACKAGE_ID::uln_302::commit_verification @$ULN302_OBJECT_ID @$VERIFICATION_OBJECT_ID @$ENDPOINT_V2_OBJECT_ID @$MESSAGING_CHANNEL_ID packet_header payload_hash @0x6 \
